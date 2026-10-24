@@ -1,0 +1,328 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ================================
+// ENUM / PILIHAN STATUS
+// ================================
+
+enum JenisBerkasKeluarga {
+  KK
+  KTP_ORTU
+}
+
+enum JenisBerkasAnak {
+  AKTA
+  KIA
+  PAS_FOTO
+}
+
+enum StatusVerifikasi {
+  MENUNGGU
+  DIVERIFIKASI
+  DITOLAK
+}
+
+enum StatusBooking {
+  MENUNGGU
+  DIKONFIRMASI
+  DIBATALKAN
+  SELESAI
+}
+
+enum StatusAnak {
+  PENDAFTAR
+  AKTIF
+}
+
+enum JenisTagihan {
+  SPP
+  PENDAFTARAN
+}
+
+enum StatusTagihan {
+  BELUM_BAYAR
+  MENUNGGU_VERIFIKASI
+  LUNAS
+  DIBATALKAN
+}
+
+enum MetodePembayaran {
+  TRANSFER
+  TUNAI
+  TABUNGAN
+}
+
+enum JenisTransaksiTabungan {
+  SETOR
+  TARIK
+  BAYAR_SPP
+}
+
+// ================================
+// 1. KELUARGA / AKUN ORANG TUA
+// ================================
+
+model Keluarga {
+  idKeluarga String @id @default(uuid()) @db.Uuid @map("id_keluarga")
+  namaAyah   String? @map("nama_ayah")
+  namaIbu    String? @map("nama_ibu")
+  noHp       String @map("no_hp")
+  email      String? @unique
+  alamat     String @db.Text
+
+  berkasKeluarga   BerkasKeluarga[]
+  bookingKunjungan BookingKunjungan[]
+  anak             Anak[]
+
+  @@map("keluarga")
+}
+
+// ================================
+// 2. BERKAS KELUARGA
+// ================================
+
+model BerkasKeluarga {
+  idBerkasKel    String @id @default(uuid()) @db.Uuid @map("id_berkas_kel")
+  idKeluarga     String @db.Uuid @map("id_keluarga")
+  jenis          JenisBerkasKeluarga
+  file           String @db.Text
+  statusVerifikasi StatusVerifikasi @default(MENUNGGU) @map("status_verifikasi")
+
+  keluarga Keluarga @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
+
+  @@index([idKeluarga])
+  @@map("berkas_keluarga")
+}
+
+// ================================
+// 3. SLOT JADWAL KUNJUNGAN
+// ================================
+
+model SlotJadwal {
+  idSlot  String @id @default(uuid()) @db.Uuid @map("id_slot")
+  tanggal DateTime @db.Date
+  jam     DateTime @db.Time(0)
+  kuota   Int
+
+  bookingKunjungan BookingKunjungan[]
+
+  @@map("slot_jadwal")
+}
+
+// ================================
+// 4. BOOKING KUNJUNGAN
+// ================================
+
+model BookingKunjungan {
+  idBooking  String @id @default(uuid()) @db.Uuid @map("id_booking")
+  idKeluarga String @db.Uuid @map("id_keluarga")
+  idSlot     String @db.Uuid @map("id_slot")
+  status     StatusBooking @default(MENUNGGU)
+
+  keluarga Keluarga @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
+  slot     SlotJadwal @relation(fields: [idSlot], references: [idSlot], onDelete: Restrict)
+
+  @@index([idKeluarga])
+  @@index([idSlot])
+  @@map("booking_kunjungan")
+}
+
+// ================================
+// 5. KELOMPOK BELAJAR
+// ================================
+
+model Kelompok {
+  idKelompok String @id @default(uuid()) @db.Uuid @map("id_kelompok")
+  nama       String
+  usiaMin    Int @map("usia_min")
+  usiaMaks   Int @map("usia_maks")
+
+  riwayatKelompok RiwayatKelompok[]
+
+  @@map("kelompok")
+}
+
+// ================================
+// 6. DATA ANAK
+// ================================
+
+model Anak {
+  idAnak     String @id @default(uuid()) @db.Uuid @map("id_anak")
+  idKeluarga String @db.Uuid @map("id_keluarga")
+  nama       String
+  nik        String @unique
+  tglLahir   DateTime @db.Date @map("tgl_lahir")
+  status     StatusAnak @default(PENDAFTAR)
+
+  keluarga         Keluarga @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Restrict)
+  berkasAnak       BerkasAnak[]
+  riwayatKelompok  RiwayatKelompok[]
+  tagihan          Tagihan[]
+  rekeningTabungan RekeningTabungan?
+  laporanMingguan  LaporanMingguan[]
+
+  @@index([idKeluarga])
+  @@map("anak")
+}
+
+// ================================
+// 7. BERKAS ANAK
+// ================================
+
+model BerkasAnak {
+  idBerkasAnak   String @id @default(uuid()) @db.Uuid @map("id_berkas_anak")
+  idAnak         String @db.Uuid @map("id_anak")
+  jenis          JenisBerkasAnak
+  file           String @db.Text
+  statusVerifikasi StatusVerifikasi @default(MENUNGGU) @map("status_verifikasi")
+
+  anak Anak @relation(fields: [idAnak], references: [idAnak], onDelete: Cascade)
+
+  @@index([idAnak])
+  @@map("berkas_anak")
+}
+
+// ================================
+// 8. TAHUN AJARAN
+// ================================
+
+model TahunAjaran {
+  idTahunAjaran String @id @default(uuid()) @db.Uuid @map("id_tahun_ajaran")
+  periode       String
+  statusAktif   Boolean @default(false) @map("status_aktif")
+
+  riwayatKelompok RiwayatKelompok[]
+
+  @@map("tahun_ajaran")
+}
+
+// ================================
+// 9. RIWAYAT KELOMPOK ANAK
+// ================================
+
+model RiwayatKelompok {
+  idRiwayat     String @id @default(uuid()) @db.Uuid @map("id_riwayat")
+  idAnak        String @db.Uuid @map("id_anak")
+  idKelompok    String @db.Uuid @map("id_kelompok")
+  idTahunAjaran String @db.Uuid @map("id_tahun_ajaran")
+
+  anak        Anak @relation(fields: [idAnak], references: [idAnak], onDelete: Restrict)
+  kelompok    Kelompok @relation(fields: [idKelompok], references: [idKelompok], onDelete: Restrict)
+  tahunAjaran TahunAjaran @relation(fields: [idTahunAjaran], references: [idTahunAjaran], onDelete: Restrict)
+
+  @@index([idAnak])
+  @@index([idKelompok])
+  @@index([idTahunAjaran])
+  @@map("riwayat_kelompok")
+}
+
+// ================================
+// 10. TAGIHAN
+// ================================
+
+model Tagihan {
+  idTagihan String @id @default(uuid()) @db.Uuid @map("id_tagihan")
+  idAnak    String @db.Uuid @map("id_anak")
+  jenis     JenisTagihan
+  bulan     Int?
+  nominal   Decimal @db.Decimal(12, 2)
+  diskon    Decimal @default(0) @db.Decimal(12, 2)
+  status    StatusTagihan @default(BELUM_BAYAR)
+
+  anak       Anak @relation(fields: [idAnak], references: [idAnak], onDelete: Restrict)
+  pembayaran Pembayaran[]
+
+  @@index([idAnak])
+  @@map("tagihan")
+}
+
+// ================================
+// 11. REKENING TABUNGAN
+// Satu anak maksimal satu rekening
+// ================================
+
+model RekeningTabungan {
+  idTabungan String @id @default(uuid()) @db.Uuid @map("id_tabungan")
+  idAnak     String @unique @db.Uuid @map("id_anak")
+  saldo      Decimal @default(0) @db.Decimal(12, 2)
+
+  anak      Anak @relation(fields: [idAnak], references: [idAnak], onDelete: Restrict)
+  transaksi TransaksiTabungan[]
+
+  @@map("rekening_tabungan")
+}
+
+// ================================
+// 12. TRANSAKSI TABUNGAN
+// ================================
+
+model TransaksiTabungan {
+  idTransaksi String @id @default(uuid()) @db.Uuid @map("id_transaksi")
+  idTabungan  String @db.Uuid @map("id_tabungan")
+  jenis       JenisTransaksiTabungan
+  nominal     Decimal @db.Decimal(12, 2)
+  bukti       String? @db.Text
+  dicatatOleh String? @map("dicatat_oleh")
+
+  tabungan RekeningTabungan @relation(fields: [idTabungan], references: [idTabungan], onDelete: Restrict)
+
+  @@index([idTabungan])
+  @@map("transaksi_tabungan")
+}
+
+// ================================
+// 13. PEMBAYARAN
+// ================================
+
+model Pembayaran {
+  idPembayaran    String @id @default(uuid()) @db.Uuid @map("id_pembayaran")
+  idTagihan       String @db.Uuid @map("id_tagihan")
+  metode          MetodePembayaran
+  buktiTransfer   String? @db.Text @map("bukti_transfer")
+  diverifikasiOleh String? @map("diverifikasi_oleh")
+
+  tagihan Tagihan @relation(fields: [idTagihan], references: [idTagihan], onDelete: Restrict)
+
+  @@index([idTagihan])
+  @@map("pembayaran")
+}
+
+// ================================
+// 14. TEMA PEMBELAJARAN
+// ================================
+
+model TemaPembelajaran {
+  idTema   String @id @default(uuid()) @db.Uuid @map("id_tema")
+  namaTema String @map("nama_tema")
+  mingguKe Int @map("minggu_ke")
+
+  laporanMingguan LaporanMingguan[]
+
+  @@map("tema_pembelajaran")
+}
+
+// ================================
+// 15. LAPORAN MINGGUAN
+// ================================
+
+model LaporanMingguan {
+  idLaporan      String @id @default(uuid()) @db.Uuid @map("id_laporan")
+  idAnak         String @db.Uuid @map("id_anak")
+  idTema         String @db.Uuid @map("id_tema")
+  aspek          String
+  catatanKegiatan String @db.Text @map("catatan_kegiatan")
+
+  anak Anak @relation(fields: [idAnak], references: [idAnak], onDelete: Restrict)
+  tema TemaPembelajaran @relation(fields: [idTema], references: [idTema], onDelete: Restrict)
+
+  @@index([idAnak])
+  @@index([idTema])
+  @@map("laporan_mingguan")
+}

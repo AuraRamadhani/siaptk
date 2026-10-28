@@ -41,3 +41,11 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+# Local AI assistant skills
+/.agents/
+/.claude/
+/.windsurf/
+/skills-lock.json
+
+# Backup migrasi PostgreSQL lama
+/prisma/migrations-postgresql-backup/

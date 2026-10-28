@@ -3,19 +3,20 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    const count = await prisma.keluarga.count();
 
     return NextResponse.json({
       success: true,
-      message: "Koneksi PostgreSQL berhasil!",
+      message: "Koneksi MySQL dan query tabel keluarga berhasil!",
+      count,
     });
   } catch (error) {
-    console.error("Database connection error:", error);
+    console.error("Database query error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message: "Koneksi database gagal.",
+        message: "Gagal mengakses tabel keluarga.",
       },
       { status: 500 },
     );

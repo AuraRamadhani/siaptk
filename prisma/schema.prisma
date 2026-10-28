@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
 }
 
 // ================================
@@ -70,7 +70,7 @@ enum JenisTransaksiTabungan {
 // ================================
 
 model Keluarga {
-  idKeluarga String @id @default(uuid()) @db.Uuid @map("id_keluarga")
+  idKeluarga String @id @default(uuid()) @map("id_keluarga")
   namaAyah   String? @map("nama_ayah")
   namaIbu    String? @map("nama_ibu")
   noHp       String @map("no_hp")
@@ -89,8 +89,8 @@ model Keluarga {
 // ================================
 
 model BerkasKeluarga {
-  idBerkasKel    String @id @default(uuid()) @db.Uuid @map("id_berkas_kel")
-  idKeluarga     String @db.Uuid @map("id_keluarga")
+  idBerkasKel    String @id @default(uuid()) @map("id_berkas_kel")
+  idKeluarga     String @map("id_keluarga")
   jenis          JenisBerkasKeluarga
   file           String @db.Text
   statusVerifikasi StatusVerifikasi @default(MENUNGGU) @map("status_verifikasi")
@@ -106,7 +106,7 @@ model BerkasKeluarga {
 // ================================
 
 model SlotJadwal {
-  idSlot  String @id @default(uuid()) @db.Uuid @map("id_slot")
+  idSlot  String @id @default(uuid()) @map("id_slot")
   tanggal DateTime @db.Date
   jam     DateTime @db.Time(0)
   kuota   Int
@@ -121,9 +121,9 @@ model SlotJadwal {
 // ================================
 
 model BookingKunjungan {
-  idBooking  String @id @default(uuid()) @db.Uuid @map("id_booking")
-  idKeluarga String @db.Uuid @map("id_keluarga")
-  idSlot     String @db.Uuid @map("id_slot")
+  idBooking  String @id @default(uuid()) @map("id_booking")
+  idKeluarga String @map("id_keluarga")
+  idSlot     String @map("id_slot")
   status     StatusBooking @default(MENUNGGU)
 
   keluarga Keluarga @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
@@ -139,7 +139,7 @@ model BookingKunjungan {
 // ================================
 
 model Kelompok {
-  idKelompok String @id @default(uuid()) @db.Uuid @map("id_kelompok")
+  idKelompok String @id @default(uuid()) @map("id_kelompok")
   nama       String
   usiaMin    Int @map("usia_min")
   usiaMaks   Int @map("usia_maks")
@@ -154,8 +154,8 @@ model Kelompok {
 // ================================
 
 model Anak {
-  idAnak     String @id @default(uuid()) @db.Uuid @map("id_anak")
-  idKeluarga String @db.Uuid @map("id_keluarga")
+  idAnak     String @id @default(uuid()) @map("id_anak")
+  idKeluarga String @map("id_keluarga")
   nama       String
   nik        String @unique
   tglLahir   DateTime @db.Date @map("tgl_lahir")
@@ -177,8 +177,8 @@ model Anak {
 // ================================
 
 model BerkasAnak {
-  idBerkasAnak   String @id @default(uuid()) @db.Uuid @map("id_berkas_anak")
-  idAnak         String @db.Uuid @map("id_anak")
+  idBerkasAnak   String @id @default(uuid()) @map("id_berkas_anak")
+  idAnak         String @map("id_anak")
   jenis          JenisBerkasAnak
   file           String @db.Text
   statusVerifikasi StatusVerifikasi @default(MENUNGGU) @map("status_verifikasi")
@@ -194,7 +194,7 @@ model BerkasAnak {
 // ================================
 
 model TahunAjaran {
-  idTahunAjaran String @id @default(uuid()) @db.Uuid @map("id_tahun_ajaran")
+  idTahunAjaran String @id @default(uuid()) @map("id_tahun_ajaran")
   periode       String
   statusAktif   Boolean @default(false) @map("status_aktif")
 
@@ -208,10 +208,10 @@ model TahunAjaran {
 // ================================
 
 model RiwayatKelompok {
-  idRiwayat     String @id @default(uuid()) @db.Uuid @map("id_riwayat")
-  idAnak        String @db.Uuid @map("id_anak")
-  idKelompok    String @db.Uuid @map("id_kelompok")
-  idTahunAjaran String @db.Uuid @map("id_tahun_ajaran")
+  idRiwayat     String @id @default(uuid()) @map("id_riwayat")
+  idAnak        String @map("id_anak")
+  idKelompok    String @map("id_kelompok")
+  idTahunAjaran String @map("id_tahun_ajaran")
 
   anak        Anak @relation(fields: [idAnak], references: [idAnak], onDelete: Restrict)
   kelompok    Kelompok @relation(fields: [idKelompok], references: [idKelompok], onDelete: Restrict)
@@ -228,8 +228,8 @@ model RiwayatKelompok {
 // ================================
 
 model Tagihan {
-  idTagihan String @id @default(uuid()) @db.Uuid @map("id_tagihan")
-  idAnak    String @db.Uuid @map("id_anak")
+  idTagihan String @id @default(uuid()) @map("id_tagihan")
+  idAnak    String @map("id_anak")
   jenis     JenisTagihan
   bulan     Int?
   nominal   Decimal @db.Decimal(12, 2)
@@ -249,8 +249,8 @@ model Tagihan {
 // ================================
 
 model RekeningTabungan {
-  idTabungan String @id @default(uuid()) @db.Uuid @map("id_tabungan")
-  idAnak     String @unique @db.Uuid @map("id_anak")
+  idTabungan String @id @default(uuid()) @map("id_tabungan")
+  idAnak     String @unique @map("id_anak")
   saldo      Decimal @default(0) @db.Decimal(12, 2)
 
   anak      Anak @relation(fields: [idAnak], references: [idAnak], onDelete: Restrict)
@@ -264,8 +264,8 @@ model RekeningTabungan {
 // ================================
 
 model TransaksiTabungan {
-  idTransaksi String @id @default(uuid()) @db.Uuid @map("id_transaksi")
-  idTabungan  String @db.Uuid @map("id_tabungan")
+  idTransaksi String @id @default(uuid()) @map("id_transaksi")
+  idTabungan  String @map("id_tabungan")
   jenis       JenisTransaksiTabungan
   nominal     Decimal @db.Decimal(12, 2)
   bukti       String? @db.Text
@@ -282,8 +282,8 @@ model TransaksiTabungan {
 // ================================
 
 model Pembayaran {
-  idPembayaran    String @id @default(uuid()) @db.Uuid @map("id_pembayaran")
-  idTagihan       String @db.Uuid @map("id_tagihan")
+  idPembayaran    String @id @default(uuid()) @map("id_pembayaran")
+  idTagihan       String @map("id_tagihan")
   metode          MetodePembayaran
   buktiTransfer   String? @db.Text @map("bukti_transfer")
   diverifikasiOleh String? @map("diverifikasi_oleh")
@@ -299,7 +299,7 @@ model Pembayaran {
 // ================================
 
 model TemaPembelajaran {
-  idTema   String @id @default(uuid()) @db.Uuid @map("id_tema")
+  idTema   String @id @default(uuid()) @map("id_tema")
   namaTema String @map("nama_tema")
   mingguKe Int @map("minggu_ke")
 
@@ -313,9 +313,9 @@ model TemaPembelajaran {
 // ================================
 
 model LaporanMingguan {
-  idLaporan      String @id @default(uuid()) @db.Uuid @map("id_laporan")
-  idAnak         String @db.Uuid @map("id_anak")
-  idTema         String @db.Uuid @map("id_tema")
+  idLaporan      String @id @default(uuid()) @map("id_laporan")
+  idAnak         String @map("id_anak")
+  idTema         String @map("id_tema")
   aspek          String
   catatanKegiatan String @db.Text @map("catatan_kegiatan")
 

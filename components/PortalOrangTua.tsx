@@ -9,17 +9,13 @@ interface ParentViewProps {
     setActiveChildId: (id: string) => void;
     onRegisterClick: () => void;
     onLogout: () => void;
-    role: string;
-    setRole: (role: any) => void;
     setCurrentView: (view: any) => void;
 }
 
 export default function PortalOrangTua({
     activeChildId,
     setActiveChildId,
-    onLogout,
-    role,
-    setRole
+    onLogout
 }: ParentViewProps) {
     const [activeTab, setActiveTab] = useState<string>("overview");
     const [familyChildren, setFamilyChildren] = useState<any[]>([]);
@@ -190,17 +186,7 @@ export default function PortalOrangTua({
                     <div className="flex items-center space-x-4">
                         <div className="bg-white text-slate-800 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-xs">
                             <span className="w-5 h-5 rounded-full bg-teal-100 text-[#095c51] flex items-center justify-center text-[10px] font-bold">OR</span>
-                            <span className="hidden sm:inline">Lihat sebagai</span>
-                            <select
-                                value={role}
-                                onChange={(e) => setRole(e.target.value)}
-                                className="bg-transparent focus:outline-none cursor-pointer font-bold text-[#095c51]"
-                            >
-                                <option value="parent">Orang Tua (Keluarga Pratama)</option>
-                                <option value="teacher">Guru</option>
-                                <option value="treasurer">Bendahara</option>
-                                <option value="principal">Kepala Sekolah</option>
-                            </select>
+                            <span className="hidden sm:inline">Orang Tua / Wali</span>
                         </div>
 
                         <button

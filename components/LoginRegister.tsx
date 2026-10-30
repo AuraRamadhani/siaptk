@@ -17,7 +17,14 @@ interface LoginRegisterProps {
     handleRegisterSubmit: (e: React.FormEvent) => void;
     onGoToPublicInfo: () => void;
     onLoginTeacher: () => void;
-}
+    // Opsional: dipakai saat layar login dipisah per peran.
+    peranJudul?: string;
+    galat?: string;
+    memuat?: boolean;
+    tanpaDaftar?: boolean;
+    labelAksiKedua?: string;
+        tautanPeran?: { label: string; href: string }[];
+    }
 
 export default function LoginRegister({
     authMode,
@@ -31,8 +38,14 @@ export default function LoginRegister({
     handleLoginSubmit,
     handleRegisterSubmit,
     onGoToPublicInfo,
-    onLoginTeacher,
-}: LoginRegisterProps) {
+        onLoginTeacher,
+        peranJudul,
+        galat,
+        memuat,
+        tanpaDaftar,
+        labelAksiKedua,
+                tautanPeran,
+            }: LoginRegisterProps) {
     return (
         <main className="min-h-screen w-full flex flex-col md:flex-row font-sans antialiased">
             {/* Kolom Kiri (Hijau Tua) - Ukuran Sedang */}
@@ -77,7 +90,7 @@ export default function LoginRegister({
                         onClick={onLoginTeacher}
                         className="px-7 py-4 bg-teal-900/40 border border-teal-600/60 text-white rounded-xl font-bold text-xs md:text-sm hover:bg-teal-800 transition flex items-center justify-center space-x-2 cursor-pointer"
                     >
-                        <span>👤 Masuk Portal Guru</span>
+                        <span>{labelAksiKedua ?? '👤 Masuk Portal Guru'}</span>
                     </button>
                 </div>
 
@@ -108,12 +121,23 @@ export default function LoginRegister({
 
                 {/* Kotak Form Ukuran Sedang & Nyaman Dilihat */}
                 <div className="max-w-md w-full mx-auto my-auto py-8">
+                    {galat && (
+                        <div className="mb-4 text-xs md:text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+                            {galat}
+                        </div>
+                    )}
                     <div className="mb-8">
                         <h3 className="text-2xl md:text-3xl font-extrabold text-slate-900">
-                            {authMode === 'login' ? 'Selamat Datang Kembali!' : 'Daftar Akun Keluarga Baru'}
+                            {peranJudul
+                                ? `Masuk Portal ${peranJudul}`
+                                : authMode === 'login'
+                                ? 'Selamat Datang Kembali!'
+                                : 'Daftar Akun Keluarga Baru'}
                         </h3>
                         <p className="text-xs md:text-sm text-slate-500 mt-2">
-                            {authMode === 'login'
+                            {peranJudul
+                                ? `Gunakan email dan kata sandi ${peranJudul.toLowerCase()} untuk mengakses portal.`
+                                : authMode === 'login'
                                 ? 'Masuk dengan akun keluarga Anda untuk mengakses portal siswa.'
                                 : 'Lengkapi data untuk mendaftarkan akun keluarga di SIAP TK.'}
                         </p>
@@ -162,9 +186,10 @@ export default function LoginRegister({
 
                             <button
                                 type="submit"
-                                className="w-full py-4 bg-[#095c51] text-white rounded-xl text-xs md:text-sm font-bold hover:bg-[#074840] transition cursor-pointer shadow-md mt-3"
+                                disabled={memuat}
+                                className="w-full py-4 bg-[#095c51] text-white rounded-xl text-xs md:text-sm font-bold hover:bg-[#074840] transition cursor-pointer shadow-md mt-3 disabled:opacity-60"
                             >
-                                Masuk Sekarang
+                                {memuat ? 'Memproses...' : 'Masuk Sekarang'}
                             </button>
                         </form>
                     ) : (
@@ -211,32 +236,44 @@ export default function LoginRegister({
                         </form>
                     )}
 
-                    <div className="mt-8 text-center border-t border-slate-100 pt-6">
-                        {authMode === 'login' ? (
-                            <div>
-                                <span className="text-xs md:text-sm text-slate-500">Belum memiliki akun keluarga? </span>
-                                <button
-                                    onClick={() => setAuthMode('register')}
-                                    className="text-xs md:text-sm font-bold text-slate-800 hover:underline ml-1 cursor-pointer"
-                                >
-                                    Buat Akun Keluarga Baru
-                                </button>
-                            </div>
-                        ) : (
-                            <div>
-                                <span className="text-xs md:text-sm text-slate-500">Sudah memiliki akun? </span>
-                                <button
-                                    onClick={() => setAuthMode('login')}
-                                    className="text-xs md:text-sm font-bold text-[#095c51] hover:underline ml-1 cursor-pointer"
-                                >
-                                    Masuk Sekarang
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                    {!tanpaDaftar && (
+                        <div className="mt-8 text-center border-t border-slate-100 pt-6">
+                            {authMode === 'login' ? (
+                                <div>
+                                    <span className="text-xs md:text-sm text-slate-500">Belum memiliki akun keluarga? </span>
+                                    <button
+                                        onClick={() => setAuthMode('register')}
+                                        className="text-xs md:text-sm font-bold text-slate-800 hover:underline ml-1 cursor-pointer"
+                                    >
+                                        Daftar di sini
+                                    </button>
+                                </div>
+                            ) : (
+                                <div>
+                                    <span className="text-xs md:text-sm text-slate-500">Sudah punya akun keluarga? </span>
+                                    <button
+                                        onClick={() => setAuthMode('login')}
+                                        className="text-xs md:text-sm font-bold text-[#095c51] hover:underline ml-1 cursor-pointer"
+                                    >
+                                        Masuk di sini
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                {tautanPeran && tautanPeran.length > 0 && (
+                                        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11px] md:text-xs">
+                                            <span className="text-slate-400">Portal lain:</span>
+                                            {tautanPeran.map((t) => (
+                                                <a key={t.href} href={t.href} className="font-semibold text-[#095c51] hover:underline">
+                                                    {t.label}
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
 
-                <div></div>
+                                <div></div>
             </div>
         </main>
     );

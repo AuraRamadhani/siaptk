@@ -144,6 +144,32 @@ export async function POST(request: Request) {
         const body = await request.json();
         const { action, email } = body;
 
+        // --- TAMBAH ANAK BARU TANPA UPLOAD BERKAS (JSON) ---
+        if (action === 'add_child') {
+            const keluarga = await prisma.keluarga.findUnique({
+                where: { email: email?.toLowerCase().trim() },
+            });
+
+            if (!keluarga) {
+                return NextResponse.json(
+                    { success: false, error: 'Sesi keluarga tidak ditemukan.' },
+                    { status: 404 }
+                );
+            }
+
+            const newAnak = await prisma.anak.create({
+                data: {
+                    idKeluarga: keluarga.idKeluarga,
+                    nama: body.namaAnak,
+                    nik: body.nikAnak || `3171${Date.now()}`,
+                    tglLahir: new Date(body.tglLahirAnak || '2021-05-10'),
+                    status: 'PENDAFTAR',
+                },
+            });
+
+            return NextResponse.json({ success: true, data: newAnak, message: 'Calon siswa baru berhasil didaftarkan.' });
+        }
+
         if (action === 'login') {
             const keluarga = await prisma.keluarga.findUnique({
                 where: { email: email?.toLowerCase().trim() },
@@ -161,10 +187,10 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json({ success: false, error: 'Aksi API tidak valid.' }, { status: 400 });
-    } catch (error: any) {
-        console.error("API Error Detail:", error);
+    } catch (error: unknown) {
+        console.error('API Error Detail:', error);
 
-        if (error.code === 'P2002') {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
             return NextResponse.json(
                 { success: false, error: 'Email atau data unik tersebut sudah terdaftar di sistem.' },
                 { status: 409 }
@@ -172,7 +198,7 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json(
-            { success: false, error: error.message || 'Terjadi kesalahan pada server database.' },
+            { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan pada server database.' },
             { status: 500 }
         );
     }

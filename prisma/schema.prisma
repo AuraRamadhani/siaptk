@@ -13,6 +13,7 @@ model Keluarga {
   namaIbu            String?             @map("nama_ibu")
   noHp               String              @map("no_hp")
   email              String?             @unique
+  kataSandi          String?             @map("kata_sandi")
   alamat             String?             @db.Text
   fileKK             String?             @map("file_kk")
   fileKTP            String?             @map("file_ktp")
@@ -21,6 +22,24 @@ model Keluarga {
   bookingKunjungan   BookingKunjungan[]
 
   @@map("keluarga")
+}
+
+enum PeranStaf {
+  GURU
+  BENDAHARA
+  KEPALA_SEKOLAH
+}
+
+model AkunStaf {
+  idAkun     String    @id @default(uuid()) @map("id_akun")
+  nama       String
+  email      String    @unique
+  kataSandi  String    @map("kata_sandi")
+  peran      PeranStaf
+  aktif      Boolean   @default(true)
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@map("akun_staf")
 }
 
 model BerkasKeluarga {

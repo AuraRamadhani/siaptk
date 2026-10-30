@@ -127,6 +127,16 @@ await uji('TC-08 setoran tunai oleh bendahara langsung sah dan menambah saldo', 
 });
 
 await uji('TC-09 daftar pendaftar + penetapan penerimaan', async () => {
+  // Pastikan selalu ada pendaftar: pakai jalur pendaftaran resmi bila antrean kosong.
+  if ((await get('/api/pendaftaran')).body.data.length === 0) {
+    await kirim('/api/auth', 'POST', {
+      action: 'add_child',
+      email: 'keluarga.pratama@email.com',
+      namaAnak: 'Calon Uji Fungsional',
+      nikAnak: '3171' + Date.now().toString().slice(-12),
+      tglLahirAnak: '2021-05-10',
+    });
+  }
   const { status, body } = await get('/api/pendaftaran');
   assert.equal(status, 200);
   const idPendaftar = body.data[0]?.idAnak;

@@ -150,13 +150,19 @@ model RekeningTabungan {
 model TransaksiTabungan {
   idTransaksi String                 @id @default(uuid()) @map("id_transaksi")
   idTabungan  String                 @map("id_tabungan")
+  idTagihan   String?                @map("id_tagihan")
   jenis       JenisTransaksiTabungan
+  metode      MetodePembayaran       @default(TUNAI)
   nominal     Decimal                @db.Decimal(12, 2)
+  keterangan  String?                @db.Text
   bukti       String?                @db.Text
+  status      StatusVerifikasi       @default(MENUNGGU)
   dicatatOleh String?                @map("dicatat_oleh")
+  createdAt   DateTime               @default(now()) @map("created_at")
   tabungan    RekeningTabungan       @relation(fields: [idTabungan], references: [idTabungan], onDelete: Cascade)
 
   @@index([idTabungan])
+  @@index([status, createdAt])
   @@map("transaksi_tabungan")
 }
 

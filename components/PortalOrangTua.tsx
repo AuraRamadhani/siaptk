@@ -61,13 +61,22 @@ export default function PortalOrangTua({
                         birthDate: new Date(ch.tglLahir).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
                         status: ch.status === 'AKTIF' ? 'Aktif' : 'Pendaftar',
                         jalur: 'Daring',
-                        sppStatus: 'Belum Dibayar',
-                        savingsBalance: ch.tabunganBalance || 150000,
+                        sppStatus: ch.tagihan?.some((t: any) => t.status === 'BELUM_BAYAR') ? 'Belum Dibayar' : 'Lunas',
+                        savingsBalance: ch.rekeningTabungan ? Number(ch.rekeningTabungan.saldo) : (ch.tabunganBalance || 0),
                         tagihan: ch.tagihan || [],
-                        tabunganMutasi: ch.tabunganMutasi || [
-                            { id: 1, ket: 'Setoran tunai via guru', tgl: '04 Okt 2026', nominal: 50000, status: 'Selesai' },
-                            { id: 2, ket: 'Setoran awal pendaftaran', tgl: '28 Sep 2026', nominal: 100000, status: 'Selesai' }
-                        ],
+                        tabunganMutasi: ch.rekeningTabungan?.transaksi?.length
+                            ? ch.rekeningTabungan.transaksi.map((t: any) => ({
+                                id: t.idTransaksi,
+                                ket: t.keterangan || (t.jenis === 'SETOR' ? 'Setoran tabungan' : t.jenis === 'TARIK' ? 'Penarikan tabungan' : 'Pembayaran SPP'),
+                                tgl: new Date(t.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+                                nominal: Number(t.nominal),
+                                jenis: t.jenis,
+                                status: t.status === 'DIVERIFIKASI' ? 'Selesai' : t.status === 'MENUNGGU' ? 'Menunggu' : 'Ditolak',
+                            }))
+                            : [
+                                { id: 1, ket: 'Setoran tunai via guru', tgl: '04 Okt 2026', nominal: 50000, status: 'Selesai' },
+                                { id: 2, ket: 'Setoran awal pendaftaran', tgl: '28 Sep 2026', nominal: 100000, status: 'Selesai' }
+                            ],
                         laporanMingguan: ch.laporanMingguan || [
                             {
                                 tema: 'Makanan Sehat',

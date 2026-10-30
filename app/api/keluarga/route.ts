@@ -25,7 +25,14 @@ export async function GET(request: Request) {
                         riwayatKelompok: {
                             include: { kelompok: true }
                         },
-                        tagihan: true // Menarik data tagihan masing-masing anak
+                        tagihan: true, // Menarik data tagihan masing-masing anak
+                        rekeningTabungan: {
+                            include: {
+                                transaksi: {
+                                    orderBy: { createdAt: 'desc' }
+                                }
+                            }
+                        }
                     }
                 },
                 berkasKeluarga: true

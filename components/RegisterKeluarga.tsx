@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import { ArrowLeft, Sparkles, Eye, EyeOff, Folder, Upload } from 'lucide-react';
 import logoSIAPTK from '@/app/assets/siap-tk-logo.png';
 
 interface RegisterKeluargaProps {
@@ -27,6 +28,10 @@ export default function RegisterKeluarga({
     const [fileKK, setFileKK] = useState<File | null>(null);
     const [fileKTP, setFileKTP] = useState<File | null>(null);
     const [loading, setLoading] = useState<boolean>(false);
+
+    // Status visibilitas kata sandi (mode terlihat / tersembunyi)
+    const [showPassword, setShowPassword] = useState<boolean>(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
 
     const kkInputRef = useRef<HTMLInputElement>(null);
     const ktpInputRef = useRef<HTMLInputElement>(null);
@@ -122,14 +127,16 @@ export default function RegisterKeluarga({
                     onClick={onBackToLogin}
                     className="text-xs font-semibold text-[#095c51] hover:underline cursor-pointer"
                 >
-                    ← Kembali ke Login
+                    <ArrowLeft className="w-4 h-4 inline-block align-middle mr-1" />
+                    Kembali ke Login
                 </button>
             </div>
 
             <div className="max-w-4xl w-full bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden">
                 <div className="bg-[#095c51] text-white p-8 md:p-10 space-y-2">
-                    <div className="inline-block px-3 py-1 bg-teal-800/80 border border-teal-600 rounded-full text-xs font-semibold text-teal-100">
-                        ✨ Pendaftaran Akun Keluarga Baru
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-teal-800/80 border border-teal-600 rounded-full text-xs font-semibold text-teal-100">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Pendaftaran Akun Keluarga Baru
                     </div>
                     <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
                         Buat Akun Keluarga
@@ -227,34 +234,54 @@ export default function RegisterKeluarga({
                             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                                 Kata Sandi <span className="text-rose-500">*</span>
                             </label>
-                            <input
-                                type="password"
-                                value={formData.password}
-                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                placeholder="••••••••"
-                                className="w-full px-4 py-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
-                                required
-                            />
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={formData.password}
+                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                    placeholder="••••••••"
+                                    className="w-full pl-4 pr-12 py-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
+                                    required
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                                    className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-[#095c51] transition cursor-pointer"
+                                >
+                                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                            </div>
                         </div>
 
                         <div>
                             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                                 Konfirmasi Kata Sandi <span className="text-rose-500">*</span>
                             </label>
-                            <input
-                                type="password"
-                                value={formData.confirmPassword}
-                                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                                placeholder="••••••••"
-                                className="w-full px-4 py-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
-                                required
-                            />
+                            <div className="relative">
+                                <input
+                                    type={showConfirmPassword ? 'text' : 'password'}
+                                    value={formData.confirmPassword}
+                                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                                    placeholder="••••••••"
+                                    className="w-full pl-4 pr-12 py-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
+                                    required
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    aria-label={showConfirmPassword ? 'Sembunyikan konfirmasi kata sandi' : 'Tampilkan konfirmasi kata sandi'}
+                                    className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-[#095c51] transition cursor-pointer"
+                                >
+                                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
                     <div className="pt-4 border-t border-slate-100 space-y-3">
                         <div className="flex items-center space-x-2">
-                            <span className="text-base">📁</span>
+                            <span className="text-[#095c51]"><Folder className="w-5 h-5" /></span>
                             <div>
                                 <h3 className="text-xs font-bold text-slate-900">Berkas Keluarga (Cukup diunggah 1x untuk semua anak)</h3>
                                 <p className="text-[11px] text-slate-400">Format file yang didukung: JPG, PNG, atau PDF (Maksimal 2 MB per berkas).</p>
@@ -278,7 +305,7 @@ export default function RegisterKeluarga({
                                     onClick={() => kkInputRef.current?.click()}
                                     className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-[#095c51] transition bg-slate-50/50 cursor-pointer"
                                 >
-                                    <div className="text-xl mb-1">📤</div>
+                                    <div className="text-[#095c51] flex justify-center mb-1"><Upload className="w-6 h-6" /></div>
                                     <div className="text-xs font-bold text-slate-800">Kartu Keluarga (KK)</div>
                                     <div className="text-[11px] text-[#095c51] mt-1 font-semibold truncate px-2">
                                         {fileKK ? `Terpilih: ${fileKK.name}` : "Klik untuk memilih file KK"}
@@ -302,7 +329,7 @@ export default function RegisterKeluarga({
                                     onClick={() => ktpInputRef.current?.click()}
                                     className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-[#095c51] transition bg-slate-50/50 cursor-pointer"
                                 >
-                                    <div className="text-xl mb-1">📤</div>
+                                    <div className="text-[#095c51] flex justify-center mb-1"><Upload className="w-6 h-6" /></div>
                                     <div className="text-xs font-bold text-slate-800">KTP Orang Tua / Wali</div>
                                     <div className="text-[11px] text-[#095c51] mt-1 font-semibold truncate px-2">
                                         {fileKTP ? `Terpilih: ${fileKTP.name}` : "Klik untuk memilih file KTP"}

@@ -1,7 +1,8 @@
 // src/components/LoginRegister.tsx
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import { Sparkles, Hand, ArrowRight, User, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import logoSIAPTK from '@/app/assets/siap-tk-logo.png';
 
 interface LoginRegisterProps {
@@ -33,6 +34,9 @@ export default function LoginRegister({
     onGoToPublicInfo,
     onLoginTeacher,
 }: LoginRegisterProps) {
+    // Status visibilitas kata sandi (mode terlihat / tersembunyi)
+    const [showPassword, setShowPassword] = useState(false);
+
     return (
         <main className="min-h-screen w-full flex flex-col md:flex-row font-sans antialiased">
             {/* Kolom Kiri (Hijau Tua) - Ukuran Sedang */}
@@ -51,13 +55,16 @@ export default function LoginRegister({
                     </div>
 
                     <div className="inline-flex items-center space-x-2 bg-teal-800/60 border border-teal-600/50 px-4 py-1.5 rounded-full text-xs font-semibold mb-6 text-teal-100">
-                        <span className="text-amber-400">✨</span>
+                        <span className="text-amber-400"><Sparkles className="w-4 h-4" /></span>
                         <span>Sistem Informasi Administrasi & PPDB</span>
                     </div>
 
                     <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6 leading-tight">
                         Selamat Datang di <br />
-                        SIAP TK! <span className="inline-block animate-bounce">👋</span>
+                        SIAP TK!{' '}
+                        <span className="inline-block animate-bounce align-middle">
+                            <Hand className="w-8 h-8 text-amber-300" strokeWidth={2} />
+                        </span>
                     </h2>
 
                     <p className="text-sm md:text-base text-teal-100/90 leading-relaxed max-w-xl">
@@ -71,13 +78,14 @@ export default function LoginRegister({
                         className="px-7 py-4 bg-[#fbbf24] text-slate-900 rounded-xl font-bold text-xs md:text-sm hover:bg-[#f59e0b] transition shadow-md flex items-center justify-center space-x-2 cursor-pointer"
                     >
                         <span>Lihat Info Publik & Biaya</span>
-                        <span>→</span>
+                        <ArrowRight className="w-4 h-4" />
                     </button>
                     <button
                         onClick={onLoginTeacher}
                         className="px-7 py-4 bg-teal-900/40 border border-teal-600/60 text-white rounded-xl font-bold text-xs md:text-sm hover:bg-teal-800 transition flex items-center justify-center space-x-2 cursor-pointer"
                     >
-                        <span>👤 Masuk Portal Guru</span>
+                        <User className="w-4 h-4" />
+                        <span>Masuk Portal Guru</span>
                     </button>
                 </div>
 
@@ -124,7 +132,7 @@ export default function LoginRegister({
                             <div>
                                 <label className="block text-xs md:text-sm font-semibold text-slate-700 mb-2">Email atau Nomor WhatsApp</label>
                                 <div className="relative">
-                                    <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400 text-sm">✉</span>
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400"><Mail className="w-4 h-4" /></span>
                                     <input
                                         type="text"
                                         value={inputEmail}
@@ -148,15 +156,23 @@ export default function LoginRegister({
                                     </button>
                                 </div>
                                 <div className="relative">
-                                    <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400 text-sm">🔒</span>
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400"><Lock className="w-4 h-4" /></span>
                                     <input
-                                        type="password"
+                                        type={showPassword ? 'text' : 'password'}
                                         value={inputPassword}
                                         onChange={(e) => setInputPassword(e.target.value)}
                                         placeholder="••••••••"
-                                        className="w-full pl-11 pr-4 py-3.5 text-xs md:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
+                                        className="w-full pl-11 pr-12 py-3.5 text-xs md:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
                                         required
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                                        className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-[#095c51] transition cursor-pointer"
+                                    >
+                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
                                 </div>
                             </div>
 
@@ -193,14 +209,24 @@ export default function LoginRegister({
                             </div>
                             <div>
                                 <label className="block text-xs md:text-sm font-semibold text-slate-700 mb-2">Buat Kata Sandi</label>
-                                <input
-                                    type="password"
-                                    value={inputPassword}
-                                    onChange={(e) => setInputPassword(e.target.value)}
-                                    placeholder="••••••••"
-                                    className="w-full px-4 py-3.5 text-xs md:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
-                                    required
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={inputPassword}
+                                        onChange={(e) => setInputPassword(e.target.value)}
+                                        placeholder="••••••••"
+                                        className="w-full pl-4 pr-12 py-3.5 text-xs md:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
+                                        required
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                                        className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-[#095c51] transition cursor-pointer"
+                                    >
+                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
                             </div>
                             <button
                                 type="submit"

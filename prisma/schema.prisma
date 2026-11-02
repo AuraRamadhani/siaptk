@@ -74,7 +74,9 @@ model Anak {
   nama             String
   nik              String               @unique
   tglLahir         DateTime             @map("tgl_lahir") @db.Date
+  jenisKelamin     String               @map("jenis_kelamin")
   status           StatusAnak           @default(PENDAFTAR)
+  jalurPendaftaran String               @map("jalur_pendaftaran") // Daring | Onsite
   keluarga         Keluarga             @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
   berkasAnak       BerkasAnak[]
   laporanMingguan  LaporanMingguan[]
@@ -88,13 +90,13 @@ model Anak {
 
 model BerkasAnak {
   idBerkasAnak     String               @id @default(uuid()) @map("id_berkas_anak")
-  idAnak           String               @map("id_anak")
-  jenis            JenisBerkasAnak
-  file             String               @db.Text
+  idAnak           String               @unique @map("id_anak")
+  akta             String?              @db.Text
+  foto             String?              @db.Text
+  kia              String?              @db.Text
   statusVerifikasi StatusVerifikasi     @default(MENUNGGU) @map("status_verifikasi")
   anak             Anak                 @relation(fields: [idAnak], references: [idAnak], onDelete: Cascade)
 
-  @@index([idAnak])
   @@map("berkas_anak")
 }
 
@@ -198,12 +200,6 @@ model LaporanMingguan {
 enum JenisBerkasKeluarga {
   KK
   KTP_ORTU
-}
-
-enum JenisBerkasAnak {
-  AKTA
-  KIA
-  PAS_FOTO
 }
 
 enum StatusVerifikasi {

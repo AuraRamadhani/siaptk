@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { Sparkles, CalendarDays, ClipboardList, CreditCard, MapPin, Phone } from 'lucide-react';
 import logoSIAPTK from '@/app/assets/siap-tk-logo.png';
 
 interface InfoPublikProps {
@@ -111,7 +112,7 @@ export default function InfoPublik({
                 {/* Cek Kelompok Anak */}
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-4">
                     <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-[#095c51] text-white flex items-center justify-center font-bold text-xs">✨</div>
+                        <div className="w-8 h-8 rounded-full bg-[#095c51] text-white flex items-center justify-center"><Sparkles className="w-4 h-4" /></div>
                         <div>
                             <h3 className="text-sm font-bold text-slate-900">Cek kelompok anak Anda</h3>
                             <p className="text-xs text-slate-500">Masukkan tanggal lahir anak untuk mengecek kelompoknya secara otomatis berdasarkan aturan sistem.</p>
@@ -147,7 +148,7 @@ export default function InfoPublik({
                                 <p className="text-xs text-slate-400 mt-0.5">3-4 tahun</p>
                             </div>
                             <div className="text-xs text-slate-600 pt-2 border-t border-slate-100 flex items-center space-x-2">
-                                <span>📅</span>
+                                <span><CalendarDays className="w-4 h-4" /></span>
                                 <span>Senin, Rabu, Jumat 08.00 - 10.00</span>
                             </div>
                         </div>
@@ -159,7 +160,7 @@ export default function InfoPublik({
                                 <p className="text-xs text-slate-400 mt-0.5">4-5 tahun</p>
                             </div>
                             <div className="text-xs text-slate-600 pt-2 border-t border-slate-100 flex items-center space-x-2">
-                                <span>📅</span>
+                                <span><CalendarDays className="w-4 h-4" /></span>
                                 <span>Senin - Kamis 08.00 - 11.00, Jumat 08.00 - 10.00</span>
                             </div>
                         </div>
@@ -171,7 +172,7 @@ export default function InfoPublik({
                                 <p className="text-xs text-slate-400 mt-0.5">5-6 tahun</p>
                             </div>
                             <div className="text-xs text-slate-600 pt-2 border-t border-slate-100 flex items-center space-x-2">
-                                <span>📅</span>
+                                <span><CalendarDays className="w-4 h-4" /></span>
                                 <span>Senin - Kamis 08.00 - 11.00, Jumat 08.00 - 10.00</span>
                             </div>
                         </div>
@@ -181,7 +182,7 @@ export default function InfoPublik({
                 {/* Syarat Pendaftaran */}
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-6">
                     <div className="flex items-center space-x-3 pb-4 border-b border-slate-100">
-                        <div className="w-8 h-8 rounded-full bg-teal-50 text-[#095c51] flex items-center justify-center font-bold text-xs">📋</div>
+                        <div className="w-8 h-8 rounded-full bg-teal-50 text-[#095c51] flex items-center justify-center"><ClipboardList className="w-4 h-4" /></div>
                         <div>
                             <h3 className="text-sm font-bold text-slate-900">Syarat Pendaftaran</h3>
                             <p className="text-xs text-slate-500">Persyaratan resmi calon peserta didik TK Islam Nur Habib</p>
@@ -219,7 +220,7 @@ export default function InfoPublik({
                 {/* Rincian Biaya */}
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-6">
                     <div className="flex items-center space-x-3 pb-4 border-b border-slate-100">
-                        <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs">💳</div>
+                        <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center"><CreditCard className="w-4 h-4" /></div>
                         <div>
                             <h3 className="text-sm font-bold text-slate-900">Rincian Biaya</h3>
                             <p className="text-xs text-slate-500">Transparan tanpa biaya tersembunyi</p>
@@ -255,7 +256,7 @@ export default function InfoPublik({
 
                     <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-5 space-y-3 text-xs">
                         <div className="font-bold text-amber-900 flex items-center space-x-2">
-                            <span>✨</span>
+                            <span><Sparkles className="w-4 h-4" /></span>
                             <span>Potongan Pendaftaran Periode Gelombang:</span>
                         </div>
                         <ul className="list-disc list-inside space-y-1 text-amber-800/90 pl-1">
@@ -275,11 +276,11 @@ export default function InfoPublik({
                         <span className="text-[11px] font-bold tracking-wider text-teal-200 uppercase">HUBUNGI KAMI</span>
                         <h3 className="text-xl font-extrabold">Sekretariat TK Islam Nur Habib</h3>
                         <p className="text-xs text-teal-100 flex items-center space-x-2">
-                            <span>📍</span>
+                            <MapPin className="w-4 h-4 shrink-0" />
                             <span>Jl. KS. Tubun RT 03/04, Kel. Pasar Baru, Kec. Karawaci, Kota Tangerang</span>
                         </p>
                         <p className="text-xs text-teal-100 flex items-center space-x-2">
-                            <span>📞</span>
+                            <Phone className="w-4 h-4 shrink-0" />
                             <span>Bunda Anis · 0812 3424 7277</span>
                         </p>
                     </div>

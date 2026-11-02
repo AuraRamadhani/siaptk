@@ -1,0 +1,2 @@
+ALTER TABLE anak ADD COLUMN jenis_kelamin VARCHAR(50) NULL;
+ALTER TABLE anak ADD COLUMN jalur_pendaftaran VARCHAR(20) NULL;

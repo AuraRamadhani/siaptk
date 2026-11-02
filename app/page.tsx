@@ -39,7 +39,12 @@ export default function Home() {
     const name = window.prompt("Masukkan nama lengkap calon siswa baru:");
     if (!name) return;
 
-    const nik = window.prompt("Masukkan NIK anak (16 digit):") || "3171" + Math.floor(100000000000 + Math.random() * 900000000000);
+    const nikRaw = window.prompt("Masukkan NIK anak (16 digit angka):") || "";
+    const nik = nikRaw.replace(/\D/g, '').slice(0, 16);
+    if (!/^\d{16}$/.test(nik)) {
+      alert("NIK harus terdiri dari tepat 16 digit angka!");
+      return;
+    }
     const tglLahir = window.prompt("Masukkan tanggal lahir (Format: YYYY-MM-DD):", "2021-05-10") || "2021-05-10";
 
     try {

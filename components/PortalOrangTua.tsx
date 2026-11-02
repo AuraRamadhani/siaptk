@@ -1,6 +1,25 @@
 'use client';
 
 import React, { useState, useEffect } from "react";
+import {
+    Bell,
+    X,
+    ArrowLeft,
+    Eye,
+    Download,
+    CreditCard,
+    PiggyBank,
+    ArrowUpRight,
+    ArrowDownLeft,
+    Image as ImageIcon,
+    FileText,
+    IdCard,
+    RefreshCw,
+    Upload,
+    TriangleAlert,
+    Check,
+    MapPin,
+} from "lucide-react";
 import logoSIAPTK from "../app/assets/siap-tk-logo.png";
 
 interface ParentViewProps {
@@ -34,6 +53,13 @@ export default function PortalOrangTua({
     const [jenisKelamin, setJenisKelamin] = useState<string>("Laki-laki");
     const [jalurPendaftaran, setJalurPendaftaran] = useState<string>("Daring");
 
+    // State tambahan untuk Onsite Booking Slot
+    const [tanggalKedatangan, setTanggalKedatangan] = useState<string>("2026-07-10");
+    const [jamKedatangan, setJamKedatangan] = useState<string>("09.00 - 10.00 WIB (Sisa 5 slot)");
+
+    // State untuk Modal Notifikasi
+    const [showNotifPanel, setShowNotifPanel] = useState<boolean>(false);
+
     // State File Berkas Anak
     const [fileAkta, setFileAkta] = useState<File | null>(null);
     const [fileFoto, setFileFoto] = useState<File | null>(null);
@@ -46,9 +72,32 @@ export default function PortalOrangTua({
 
     const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+    // State untuk panel detail anak (dibuka saat klik "Pilih")
+    const [detailChildId, setDetailChildId] = useState<string | null>(null);
+
+    // State untuk modal preview berkas (lightbox)
+    const [previewBerkas, setPreviewBerkas] = useState<{ label: string; url: string } | null>(null);
+
+    // State untuk berkas keluarga (KK & KTP orang tua) dari database
+    const [familyFiles, setFamilyFiles] = useState<any[]>([]);
+    const [uploadingFamilyFile, setUploadingFamilyFile] = useState<string | null>(null);
+
+    // Helper: bangun URL publik berkas & deteksi tipe file
+    const berkasUrl = (filename: string) => `/uploads/calon-siswa/${filename}`;
+    const familyFileUrl = (filename: string) => `/uploads/${encodeURIComponent(filename)}`;
+    const isImageFile = (filename: string) => /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(filename);
+
+    // Tutup panel detail & preview saat berpindah tab
+    useEffect(() => {
+        if (activeTab !== "children") {
+            setDetailChildId(null);
+        }
+        setPreviewBerkas(null);
+    }, [activeTab]);
+
     // Ambil data asli secara otomatis dari database MySQL melalui API backend
     const fetchFamilyData = () => {
-        fetch('/api/keluarga?email=keluarga.pratama@email.com')
+        fetch('/api/keluarga?email=sari.pratama@gmail.com')
             .then((res) => res.json())
             .then((result) => {
                 if (result.success && result.data) {
@@ -57,11 +106,15 @@ export default function PortalOrangTua({
                     const formattedChildren = daftarAnak.map((ch: any) => ({
                         id: String(ch.idAnak),
                         name: ch.nama,
+                        nik: ch.nik || '-',
+                        jenisKelamin: ch.jenisKelamin || '-',
                         group: ch.riwayatKelompok?.[0]?.kelompok?.nama || 'TK B',
                         birthDate: new Date(ch.tglLahir).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+                        birthDateRaw: ch.tglLahir,
                         status: ch.status === 'AKTIF' ? 'Aktif' : 'Pendaftar',
-                        jalur: 'Daring',
-                        sppStatus: 'Belum Dibayar',
+                        jalur: ch.jalurPendaftaran || 'Daring',
+                        berkas: ch.berkasAnak?.[0] || null,
+                        sppStatus: ch.status === 'AKTIF' ? 'Belum Dibayar' : '-',
                         savingsBalance: ch.tabunganBalance || 150000,
                         tagihan: ch.tagihan || [],
                         tabunganMutasi: ch.tabunganMutasi || [
@@ -79,6 +132,7 @@ export default function PortalOrangTua({
                     }));
 
                     setFamilyChildren(formattedChildren);
+                    setFamilyFiles(result.data.berkasKeluarga || []);
                     if (formattedChildren.length > 0 && !activeChildId) {
                         setActiveChildId(formattedChildren[0].id);
                     }
@@ -95,6 +149,45 @@ export default function PortalOrangTua({
         fetchFamilyData();
     }, []);
 
+    // Fungsi upload ulang berkas keluarga (KK / KTP Orang Tua)
+    const handleUploadFamilyFile = async (jenis: 'KK' | 'KTP_ORTU', file: File) => {
+        // Validasi tipe file
+        const allowed = ['.jpg', '.jpeg', '.png', '.pdf'];
+        const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+        if (!allowed.includes(ext)) {
+            alert("Format file harus JPG, PNG, atau PDF!");
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+            alert("Ukuran file maksimal 2 MB!");
+            return;
+        }
+
+        setUploadingFamilyFile(jenis);
+        try {
+            const formData = new FormData();
+            formData.append('action', 'update_berkas_keluarga');
+            formData.append('email', 'sari.pratama@gmail.com');
+            formData.append('jenis', jenis);
+            formData.append('file', file);
+
+            const response = await fetch('/api/keluarga', { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (result.success) {
+                alert(jenis === 'KK' ? "Kartu Keluarga berhasil diunggah ulang!" : "KTP Orang Tua berhasil diunggah ulang!");
+                fetchFamilyData(); // Muat ulang agar nama file & status terbaru tampil
+            } else {
+                alert(result.error || "Gagal mengunggah berkas.");
+            }
+        } catch (error) {
+            console.error("Error uploading family file:", error);
+            alert("Terjadi kesalahan pada koneksi server.");
+        } finally {
+            setUploadingFamilyFile(null);
+        }
+    };
+
     // Fungsi untuk mengirim data pendaftaran anak baru & berkas ke database via API (FormData)
     const handleSaveNewChild = async () => {
         if (!namaAnak || !tglLahirAnak || !nikAnak) {
@@ -102,16 +195,32 @@ export default function PortalOrangTua({
             return;
         }
 
+        // NIK wajib tepat 16 digit angka
+        if (!/^\d{16}$/.test(nikAnak)) {
+            alert("NIK harus terdiri dari tepat 16 digit angka!");
+            return;
+        }
+
+        // Ketiga berkas anak wajib diunggah
+        if (!fileAkta || !fileFoto || !fileKia) {
+            alert("Ketiga berkas wajib diunggah: Akta Kelahiran, Pas Foto, dan KIA!");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const formData = new FormData();
             formData.append('action', 'add_child');
-            formData.append('email', 'keluarga.pratama@email.com');
+            formData.append('email', 'sari.pratama@gmail.com');
             formData.append('namaAnak', namaAnak);
             formData.append('nikAnak', nikAnak);
             formData.append('tglLahirAnak', tglLahirAnak);
             formData.append('jenisKelamin', jenisKelamin);
             formData.append('jalurPendaftaran', jalurPendaftaran);
+            if (jalurPendaftaran === 'Onsite') {
+                formData.append('tanggalKedatangan', tanggalKedatangan);
+                formData.append('jamKedatangan', jamKedatangan);
+            }
 
             if (fileAkta) formData.append('fileAkta', fileAkta);
             if (fileFoto) formData.append('fileFoto', fileFoto);
@@ -124,7 +233,7 @@ export default function PortalOrangTua({
 
             const result = await response.json();
             if (result.success) {
-                alert("Berhasil mendaftarkan anak baru beserta berkas ke database!");
+                alert("Berhasil mendaftarkan anak baru beserta berkas ke database! Tagihan pendaftaran otomatis dibuat (jika daring).");
                 setShowAddChildModal(false);
                 setNamaAnak("");
                 setTglLahirAnak("");
@@ -161,6 +270,9 @@ export default function PortalOrangTua({
         laporanMingguan: []
     };
 
+    // Anak yang sedang dibuka di panel detail (dibuka lewat tombol "Pilih")
+    const detailChild = detailChildId ? familyChildren.find(c => c.id === detailChildId) : null;
+
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased flex flex-col w-full relative">
             {/* Topbar Utama */}
@@ -179,26 +291,12 @@ export default function PortalOrangTua({
                     </div>
 
                     <div className="flex items-center space-x-4">
-                        <div className="bg-white text-slate-800 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-xs">
-                            <span className="w-5 h-5 rounded-full bg-teal-100 text-[#095c51] flex items-center justify-center text-[10px] font-bold">OR</span>
-                            <span className="hidden sm:inline">Lihat sebagai</span>
-                            <select
-                                value={role}
-                                onChange={(e) => setRole(e.target.value)}
-                                className="bg-transparent focus:outline-none cursor-pointer font-bold text-[#095c51]"
-                            >
-                                <option value="parent">Orang Tua (Keluarga Pratama)</option>
-                                <option value="teacher">Guru</option>
-                                <option value="treasurer">Bendahara</option>
-                                <option value="principal">Kepala Sekolah</option>
-                            </select>
-                        </div>
-
+                        {/* Tombol Lonceng Notifikasi */}
                         <button
-                            onClick={() => alert("Tidak ada pemberitahuan baru")}
+                            onClick={() => setShowNotifPanel(!showNotifPanel)}
                             className="w-10 h-10 rounded-xl bg-teal-800/80 hover:bg-teal-700 flex items-center justify-center text-white transition cursor-pointer relative shadow-xs"
                         >
-                            🔔
+                            <Bell className="w-5 h-5" />
                             <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-amber-400 rounded-full"></span>
                         </button>
 
@@ -211,6 +309,38 @@ export default function PortalOrangTua({
                     </div>
                 </div>
             </header>
+
+            {/* Panel Notifikasi (Popup ketika lonceng diklik)[cite: 3] */}
+            {showNotifPanel && (
+                <div className="absolute top-20 right-12 z-50 w-96 bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                        <div className="flex items-center space-x-2">
+                            <Bell className="w-4 h-4 text-[#095c51]" />
+                            <h2 className="text-sm font-bold text-slate-900">Pusat Notifikasi</h2>
+                        </div>
+                        <button
+                            onClick={() => setShowNotifPanel(false)}
+                            className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <div className="space-y-3">
+                        <div className="p-4 bg-teal-50/50 border border-teal-100 rounded-2xl space-y-1">
+                            <div className="text-xs font-bold text-slate-900">Verifikasi Berkas Diterima</div>
+                            <div className="text-[11px] text-slate-500">Berkas Akta Kelahiran Ananda Aisyah telah diverifikasi.[cite: 3]</div>
+                        </div>
+                        <div className="p-4 bg-teal-50/50 border border-teal-100 rounded-2xl space-y-1">
+                            <div className="text-xs font-bold text-slate-900">Pendaftaran Diterima</div>
+                            <div className="text-[11px] text-slate-500">Formulir pendaftaran siswa baru berhasil diterima oleh sistem.</div>
+                        </div>
+                        <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-1">
+                            <div className="text-xs font-bold text-slate-900">Pengingat Pembayaran SPP</div>
+                            <div className="text-[11px] text-slate-500">SPP bulan Oktober 2026 untuk Fathan belum dikonfirmasi.[cite: 3]</div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Layout Utama */}
             <div className="flex-1 flex w-full px-6 md:px-12 py-8 gap-8">
@@ -304,8 +434,8 @@ export default function PortalOrangTua({
                                             key={child.id}
                                             onClick={() => setActiveChildId(child.id)}
                                             className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeChildId === child.id
-                                                    ? 'bg-[#095c51] text-white shadow-sm'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                ? 'bg-[#095c51] text-white shadow-sm'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                                 }`}
                                         >
                                             {child.name} ({child.group})
@@ -317,9 +447,11 @@ export default function PortalOrangTua({
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
                                     <div className="text-xs font-semibold text-slate-500">SPP Bulan Ini</div>
-                                    <div className="text-2xl font-bold text-slate-900 mt-1.5">Rp135.000</div>
-                                    <span className="inline-block mt-3 px-2.5 py-1 text-[10px] bg-emerald-100 text-emerald-800 rounded-md font-bold">
-                                        {activeChild?.sppStatus || 'Belum Dibayar'}
+                                    <div className="text-2xl font-bold text-slate-900 mt-1.5">
+                                        {activeChild?.status === 'Aktif' ? 'Rp135.000' : '-'}
+                                    </div>
+                                    <span className={`inline-block mt-3 px-2.5 py-1 text-[10px] rounded-md font-bold ${activeChild?.status === 'Aktif' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                                        {activeChild?.status === 'Aktif' ? (activeChild?.sppStatus || 'Belum Dibayar') : 'Belum Terdaftar di Database'}
                                     </span>
                                 </div>
 
@@ -333,7 +465,9 @@ export default function PortalOrangTua({
 
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
                                     <div className="text-xs font-semibold text-slate-500">Status Anak</div>
-                                    <div className="text-2xl font-bold text-[#095c51] mt-1.5">Kelompok {activeChild?.group}</div>
+                                    <div className="text-2xl font-bold text-[#095c51] mt-1.5">
+                                        {activeChild?.status === 'Aktif' ? `Kelompok ${activeChild?.group}` : 'Menunggu Verifikasi'}
+                                    </div>
                                     <div className="text-[11px] text-slate-400 mt-1.5">Tahun ajaran 2026/2027</div>
                                 </div>
                             </div>
@@ -356,50 +490,167 @@ export default function PortalOrangTua({
                                 </button>
                             </div>
 
-                            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
-                                <table className="w-full text-xs text-left">
-                                    <thead>
-                                        <tr className="border-b border-slate-100 text-slate-400 font-semibold bg-slate-50/30">
-                                            <th className="p-5">NAMA LENGKAP ANAK</th>
-                                            <th className="p-5">TANGGAL LAHIR</th>
-                                            <th className="p-5">KELOMPOK</th>
-                                            <th className="p-5">JALUR</th>
-                                            <th className="p-5">STATUS PENDAFTARAN</th>
-                                            <th className="p-5 text-right">AKSI</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 text-slate-700">
-                                        {familyChildren.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={6} className="p-6 text-center text-slate-400">Belum ada anak terdaftar. Klik "+ Tambah Anak Baru" untuk mendaftar.</td>
+                            {detailChild ? (
+                                /* ================= PANEL DETAIL ANAK ================= */
+                                <div className="space-y-6">
+                                    {/* Header detail dengan tombol kembali */}
+                                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between gap-4">
+                                        <div className="flex items-center gap-4">
+                                            <button
+                                                onClick={() => setDetailChildId(null)}
+                                                className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold transition cursor-pointer"
+                                                aria-label="Kembali ke daftar anak"
+                                            >
+                                                <ArrowLeft className="w-5 h-5" />
+                                            </button>
+                                            <div>
+                                                <h2 className="text-lg font-bold text-slate-900">{detailChild.name}</h2>
+                                                <p className="text-xs text-slate-500">Detail data anak & berkas pendaftaran</p>
+                                            </div>
+                                        </div>
+                                        <span className={`px-3 py-1.5 rounded-full font-bold text-[10px] ${detailChild.status === 'Aktif' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                            {detailChild.status}
+                                        </span>
+                                    </div>
+
+                                    {/* Info data anak */}
+                                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
+                                        <h3 className="text-sm font-bold text-slate-900 mb-4">Data Anak</h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <div className="p-4 bg-slate-50 rounded-2xl">
+                                                <p className="text-[10px] font-semibold text-slate-400 uppercase">NIK</p>
+                                                <p className="text-xs font-bold text-slate-900 mt-1">{detailChild.nik}</p>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 rounded-2xl">
+                                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Tanggal Lahir</p>
+                                                <p className="text-xs font-bold text-slate-900 mt-1">{detailChild.birthDate}</p>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 rounded-2xl">
+                                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Jenis Kelamin</p>
+                                                <p className="text-xs font-bold text-slate-900 mt-1">{detailChild.jenisKelamin}</p>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 rounded-2xl">
+                                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Kelompok</p>
+                                                <p className="text-xs font-bold text-slate-900 mt-1">{detailChild.group}</p>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 rounded-2xl">
+                                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Jalur Pendaftaran</p>
+                                                <p className="text-xs font-bold text-slate-900 mt-1">{detailChild.jalur}</p>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 rounded-2xl">
+                                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Status Pendaftaran</p>
+                                                <p className="text-xs font-bold text-slate-900 mt-1">{detailChild.status}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Berkas anak */}
+                                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-sm font-bold text-slate-900">Berkas Pendaftaran</h3>
+                                            <span className={`px-2.5 py-1 rounded-lg font-bold text-[10px] ${detailChild.berkas?.statusVerifikasi === 'DIVERIFIKASI' ? 'bg-emerald-100 text-emerald-800' : detailChild.berkas?.statusVerifikasi === 'DITOLAK' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+                                                {detailChild.berkas?.statusVerifikasi || 'BELUM_ADA_BERKAS'}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                            {([
+                                                { label: 'Akta Kelahiran', key: 'akta' },
+                                                { label: 'Pas Foto', key: 'foto' },
+                                                { label: 'KIA (Kartu Identitas Anak)', key: 'kia' },
+                                            ] as const).map(({ label, key }) => {
+                                                const filename = detailChild.berkas?.[key] || null;
+                                                return (
+                                                    <div key={key} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-xs font-bold text-slate-800">{label}</p>
+                                                            {filename && (
+                                                                <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[9px]">
+                                                                    {detailChild.berkas?.statusVerifikasi || 'MENUNGGU'}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {filename ? (
+                                                            <>
+                                                                <p className="text-[10px] text-slate-500 truncate" title={filename}>{filename}</p>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={() => setPreviewBerkas({ label, url: berkasUrl(filename) })}
+                                                                        className="flex-1 px-3 py-2 bg-[#009688] hover:bg-[#00796b] text-white rounded-xl font-bold text-[11px] transition cursor-pointer"
+                                                                    >
+                                                                        <Eye className="w-3.5 h-3.5 inline-block align-middle mr-1" />
+                                                                        Preview
+                                                                    </button>
+                                                                    <a
+                                                                        href={berkasUrl(filename)}
+                                                                        download
+                                                                        aria-label="Unduh berkas"
+                                                                        className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-[11px] transition flex items-center justify-center"
+                                                                    >
+                                                                        <Download className="w-4 h-4" />
+                                                                    </a>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <p className="text-[11px] text-slate-400 italic">Belum ada berkas diunggah</p>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
+                                    <table className="w-full text-xs text-left">
+                                        <thead>
+                                            <tr className="border-b border-slate-100 text-slate-400 font-semibold bg-slate-50/30">
+                                                <th className="p-5">NAMA LENGKAP ANAK</th>
+                                                <th className="p-5">TANGGAL LAHIR</th>
+                                                <th className="p-5">KELOMPOK</th>
+                                                <th className="p-5">JALUR</th>
+                                                <th className="p-5">STATUS PENDAFTARAN</th>
+                                                <th className="p-5 text-right">AKSI</th>
                                             </tr>
-                                        ) : (
-                                            familyChildren.map((ch) => (
-                                                <tr key={ch.id} className="hover:bg-slate-50/50 transition">
-                                                    <td className="p-5 font-bold text-slate-900">{ch.name}</td>
-                                                    <td className="p-5 text-slate-500">{ch.birthDate}</td>
-                                                    <td className="p-5">
-                                                        <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-lg font-bold text-[10px]">
-                                                            {ch.group}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-5 text-slate-600">{ch.jalur}</td>
-                                                    <td className="p-5">
-                                                        <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px]">
-                                                            {ch.status}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-5 text-right">
-                                                        <button onClick={() => setActiveChildId(ch.id)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-[11px] transition cursor-pointer">
-                                                            Pilih
-                                                        </button>
-                                                    </td>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 text-slate-700">
+                                            {familyChildren.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={6} className="p-6 text-center text-slate-400">Belum ada anak terdaftar. Klik "+ Tambah Anak Baru" untuk mendaftar.</td>
                                                 </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
+                                            ) : (
+                                                familyChildren.map((ch) => (
+                                                    <tr key={ch.id} className="hover:bg-slate-50/50 transition">
+                                                        <td className="p-5 font-bold text-slate-900">{ch.name}</td>
+                                                        <td className="p-5 text-slate-500">{ch.birthDate}</td>
+                                                        <td className="p-5">
+                                                            <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-lg font-bold text-[10px]">
+                                                                {ch.group}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-5 text-slate-600">{ch.jalur}</td>
+                                                        <td className="p-5">
+                                                            <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px]">
+                                                                {ch.status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-5 text-right">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setActiveChildId(ch.id);
+                                                                    setDetailChildId(ch.id);
+                                                                }}
+                                                                className="px-4 py-2 bg-[#009688] hover:bg-[#00796b] text-white rounded-xl font-semibold text-[11px] transition cursor-pointer"
+                                                            >
+                                                                Pilih
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -415,7 +666,8 @@ export default function PortalOrangTua({
                                     onClick={() => setShowPaymentModal(true)}
                                     className="px-5 py-3 bg-[#009688] hover:bg-[#00796b] text-white rounded-2xl font-bold text-xs transition shadow-sm cursor-pointer flex items-center space-x-2"
                                 >
-                                    <span>💳 Bayar / Unggah Bukti</span>
+                                    <CreditCard className="w-4 h-4" />
+                                    <span>Bayar / Unggah Bukti</span>
                                 </button>
                             </div>
 
@@ -469,13 +721,13 @@ export default function PortalOrangTua({
                         </div>
                     )}
 
-                    {/* TAB: TABUNGAN SISWA (Sesuai Referensi Gambar) */}
+                    {/* TAB: TABUNGAN SISWA */}
                     {activeTab === "savings" && (
                         <div className="space-y-6">
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex justify-between items-center flex-wrap gap-4">
                                 <div>
                                     <h1 className="text-xl font-bold text-slate-900 flex items-center space-x-2">
-                                        <span>💰 Tabungan Siswa</span>
+                                        <span className="flex items-center gap-2"> Tabungan Siswa</span>
                                     </h1>
                                     <p className="text-xs text-slate-500 mt-1">Pengelolaan saldo tabungan siswa transparan tanpa biaya administrasi.</p>
                                 </div>
@@ -485,8 +737,8 @@ export default function PortalOrangTua({
                                             key={child.id}
                                             onClick={() => setActiveChildId(child.id)}
                                             className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeChildId === child.id
-                                                    ? 'bg-[#095c51] text-white shadow-sm'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                ? 'bg-[#095c51] text-white shadow-sm'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                                 }`}
                                         >
                                             {child.name} ({child.group})
@@ -495,7 +747,6 @@ export default function PortalOrangTua({
                                 </div>
                             </div>
 
-                            {/* Card Saldo Utama */}
                             <div className="bg-[#095c51] text-white p-8 rounded-3xl shadow-md space-y-6 relative overflow-hidden">
                                 <div className="absolute right-6 top-6 bg-teal-800/80 px-3 py-1 rounded-xl text-xs font-bold tracking-wider">
                                     {activeChild.group}
@@ -519,12 +770,12 @@ export default function PortalOrangTua({
                                         onClick={() => alert("Pengajuan penarikan dikirim ke pihak sekolah")}
                                         className="px-5 py-2.5 bg-teal-800 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition cursor-pointer border border-teal-600"
                                     >
-                                        ↗ Ajukan Penarikan
+                                        <ArrowUpRight className="w-4 h-4 inline-block align-middle mr-1" />
+                                        Ajukan Penarikan
                                     </button>
                                 </div>
                             </div>
 
-                            {/* Riwayat Mutasi Tabungan */}
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
                                 <div className="flex justify-between items-center pb-3 border-b border-slate-100">
                                     <h2 className="text-sm font-bold text-slate-900">Riwayat Mutasi Tabungan</h2>
@@ -535,8 +786,8 @@ export default function PortalOrangTua({
                                     {activeChild.tabunganMutasi?.map((mut: any) => (
                                         <div key={mut.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex justify-between items-center">
                                             <div className="flex items-center space-x-3">
-                                                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                                                    ↙
+                                                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                                                    <ArrowDownLeft className="w-5 h-5" />
                                                 </div>
                                                 <div>
                                                     <div className="text-xs font-bold text-slate-900">{mut.ket}</div>
@@ -556,7 +807,7 @@ export default function PortalOrangTua({
                         </div>
                     )}
 
-                    {/* TAB: LAPORAN MINGGUAN (Sesuai Referensi Gambar) */}
+                    {/* TAB: LAPORAN MINGGUAN */}
                     {activeTab === "reports" && (
                         <div className="space-y-6">
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex justify-between items-center flex-wrap gap-4">
@@ -570,8 +821,8 @@ export default function PortalOrangTua({
                                             key={child.id}
                                             onClick={() => setActiveChildId(child.id)}
                                             className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeChildId === child.id
-                                                    ? 'bg-[#095c51] text-white shadow-sm'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                ? 'bg-[#095c51] text-white shadow-sm'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                                 }`}
                                         >
                                             {child.name} ({child.group})
@@ -589,7 +840,7 @@ export default function PortalOrangTua({
                                                 <p className="text-[11px] text-slate-400 mt-0.5">{lap.periode}</p>
                                             </div>
                                             <span className="px-3 py-1 bg-teal-100 text-[#095c51] rounded-xl text-xs font-bold">
-                                                {activeChild.group} - {activeChild.name}
+                                                {activeChild.group} · {activeChild.name}
                                             </span>
                                         </div>
 
@@ -602,7 +853,7 @@ export default function PortalOrangTua({
                                             <div className="flex space-x-4">
                                                 {lap.dokumentasi.map((doc: string, dIdx: number) => (
                                                     <div key={dIdx} className="w-28 h-24 rounded-2xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-400 space-y-1">
-                                                        <span className="text-lg">🖼️</span>
+                                                        <span className="text-lg flex justify-center"><ImageIcon className="w-6 h-6" /></span>
                                                         <span className="text-[11px] font-semibold text-slate-600">{doc}</span>
                                                     </div>
                                                 ))}
@@ -614,7 +865,7 @@ export default function PortalOrangTua({
                         </div>
                     )}
 
-                    {/* TAB: BERKAS KELUARGA (Sesuai Referensi Gambar) */}
+                    {/* TAB: BERKAS KELUARGA */}
                     {activeTab === "family_files" && (
                         <div className="space-y-6">
                             <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xs">
@@ -623,38 +874,125 @@ export default function PortalOrangTua({
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <h2 className="text-sm font-bold text-slate-900">Kartu Keluarga</h2>
-                                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md font-bold text-[10px]">
-                                            Terverifikasi
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-slate-500">Saat ini: <span className="font-semibold text-slate-800">kk_pratama.jpg</span></p>
-                                    <label className="block w-full py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-xs font-bold text-center transition cursor-pointer shadow-xs">
-                                        Unggah KK baru
-                                        <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.pdf" />
-                                    </label>
-                                </div>
+                                {([
+                                    { jenis: 'KK' as const, title: 'Kartu Keluarga', Icon: FileText, hint: 'Format JPG/PNG/PDF, maks 2 MB' },
+                                    { jenis: 'KTP_ORTU' as const, title: 'KTP Orang Tua', Icon: IdCard, hint: 'Format JPG/PNG/PDF, maks 2 MB' },
+                                ]).map(({ jenis, title, Icon, hint }) => {
+                                    const berkas = familyFiles.find((f) => f.jenis === jenis) || null;
+                                    const filename: string | null = berkas?.file || null;
+                                    const status: string = berkas?.statusVerifikasi || 'BELUM_ADA';
+                                    const isUploading = uploadingFamilyFile === jenis;
 
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <h2 className="text-sm font-bold text-slate-900">KTP Orang Tua</h2>
-                                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md font-bold text-[10px]">
-                                            Terverifikasi
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-slate-500">Saat ini: <span className="font-semibold text-slate-800">ktp_ibu.jpg</span></p>
-                                    <label className="block w-full py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-xs font-bold text-center transition cursor-pointer shadow-xs">
-                                        Unggah KTP baru
-                                        <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.pdf" />
-                                    </label>
-                                </div>
+                                    return (
+                                        <div key={jenis} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+                                            <div className="flex justify-between items-center">
+                                                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                                    <Icon className="w-4 h-4 text-[#095c51]" />
+                                                    {title}
+                                                </h2>
+                                                <span className={`px-2.5 py-1 rounded-md font-bold text-[10px] ${status === 'DIVERIFIKASI' ? 'bg-emerald-100 text-emerald-800' : status === 'DITOLAK' ? 'bg-rose-100 text-rose-700' : status === 'MENUNGGU' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {status === 'DIVERIFIKASI' ? 'Terverifikasi' : status === 'DITOLAK' ? 'Ditolak' : status === 'MENUNGGU' ? 'Menunggu Verifikasi' : 'Belum Diunggah'}
+                                                </span>
+                                            </div>
+
+                                            {filename ? (
+                                                <p className="text-xs text-slate-500 truncate" title={filename}>
+                                                    Saat ini: <span className="font-semibold text-slate-800">{filename}</span>
+                                                </p>
+                                            ) : (
+                                                <p className="text-xs text-slate-400 italic">Belum ada berkas yang diunggah.</p>
+                                            )}
+
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => filename && setPreviewBerkas({ label: title, url: familyFileUrl(filename) })}
+                                                    disabled={!filename}
+                                                    className="flex-1 py-3 bg-[#009688] hover:bg-[#00796b] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-2xl text-xs font-bold transition cursor-pointer shadow-xs"
+                                                >
+                                                    <Eye className="w-4 h-4 inline-block align-middle mr-1" />
+                                                    Lihat Berkas
+                                                </button>
+                                                <label className={`flex-1 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-xs font-bold text-center transition cursor-pointer shadow-xs ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}>
+                                                    {isUploading ? 'Mengunggah...' : filename ? (
+                                                        <><RefreshCw className="w-4 h-4 inline-block align-middle mr-1" />Unggah Ulang</>
+                                                    ) : (
+                                                        <><Upload className="w-4 h-4 inline-block align-middle mr-1" />Unggah</>
+                                                    )}
+                                                    <input
+                                                        type="file"
+                                                        className="hidden"
+                                                        accept=".jpg,.jpeg,.png,.pdf"
+                                                        disabled={isUploading}
+                                                        onChange={(e) => {
+                                                            const f = e.target.files?.[0];
+                                                            if (f) handleUploadFamilyFile(jenis, f);
+                                                            e.target.value = ''; // Reset agar file sama bisa dipilih lagi
+                                                        }}
+                                                    />
+                                                </label>
+                                            </div>
+
+                                            <p className="text-[11px] text-slate-400">{hint}</p>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
                 </main>
             </div>
+
+            {/* MODAL PREVIEW BERKAS ANAK (LIGHTBOX) */}
+            {previewBerkas && (
+                <div
+                    className="fixed inset-0 z-[60] bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4"
+                    onClick={() => setPreviewBerkas(null)}
+                >
+                    <div
+                        className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-900">Preview Berkas</h3>
+                                <p className="text-[11px] text-slate-500">{previewBerkas.label}</p>
+                            </div>
+                            <button
+                                onClick={() => setPreviewBerkas(null)}
+                                className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold transition cursor-pointer"
+                                aria-label="Tutup preview"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-auto flex-1 flex items-center justify-center bg-slate-50">
+                            {isImageFile(previewBerkas.url) ? (
+                                <img
+                                    src={previewBerkas.url}
+                                    alt={previewBerkas.label}
+                                    className="max-w-full max-h-[70vh] object-contain rounded-xl bg-white shadow-sm"
+                                />
+                            ) : (
+                                <iframe
+                                    src={previewBerkas.url}
+                                    title={previewBerkas.label}
+                                    className="w-full h-[70vh] rounded-xl bg-white border border-slate-200"
+                                />
+                            )}
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
+                            <a
+                                href={previewBerkas.url}
+                                download
+                                className="px-4 py-2.5 bg-[#009688] hover:bg-[#00796b] text-white rounded-xl font-bold text-xs transition"
+                            >
+                                <Download className="w-4 h-4 inline-block align-middle mr-1" />
+                                Unduh Berkas
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* MODAL KONFIRMASI PEMBAYARAN / UNGGAH BUKTI TRANSFER */}
             {showPaymentModal && (
@@ -664,9 +1002,9 @@ export default function PortalOrangTua({
                             <h2 className="text-base font-bold text-slate-900">Konfirmasi Pembayaran Tagihan</h2>
                             <button
                                 onClick={() => setShowPaymentModal(false)}
-                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 font-bold cursor-pointer"
+                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
                             >
-                                ✕
+                                <X className="w-4 h-4" />
                             </button>
                         </div>
 
@@ -747,9 +1085,9 @@ export default function PortalOrangTua({
                             </div>
                             <button
                                 onClick={() => setShowAddChildModal(false)}
-                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 font-bold cursor-pointer"
+                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
                             >
-                                ✕
+                                <X className="w-4 h-4" />
                             </button>
                         </div>
 
@@ -806,11 +1144,16 @@ export default function PortalOrangTua({
                                     <label className="block text-xs font-bold text-slate-700 mb-1.5">NIK (Sesuai Kartu Keluarga) *</label>
                                     <input
                                         type="text"
-                                        placeholder="36710xxxxxxxxxxx"
+                                        inputMode="numeric"
+                                        maxLength={16}
+                                        placeholder="16 digit angka"
                                         value={nikAnak}
-                                        onChange={(e) => setNikAnak(e.target.value)}
+                                        onChange={(e) => setNikAnak(e.target.value.replace(/\D/g, '').slice(0, 16))}
                                         className="w-full px-4 py-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#095c51]/20 focus:border-[#095c51]"
                                     />
+                                    <p className={`text-[11px] mt-1 ${nikAnak.length === 16 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                        {nikAnak.length}/16 digit
+                                    </p>
                                 </div>
                             </div>
                         )}
@@ -818,19 +1161,19 @@ export default function PortalOrangTua({
                         {modalStep === 2 && (
                             <div className="space-y-4">
                                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start space-x-3">
-                                    <span className="text-amber-600 text-base font-bold">⚠️</span>
+                                    <span className="text-amber-600 flex justify-center"><TriangleAlert className="w-5 h-5" /></span>
                                     <p className="text-xs text-amber-800 font-medium">
-                                        Berkas khusus anak dapat diunggah sekarang atau disusulkan nanti sebelum masa orientasi dimulai.
+                                        Ketiga berkas berikut <b>wajib diunggah</b> sebelum pendaftaran dapat dikirim.
                                     </p>
                                 </div>
 
                                 <div className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between shadow-xs">
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-10 h-10 rounded-xl bg-teal-50 text-[#095c51] flex items-center justify-center font-bold">📄</div>
+                                        <div className="w-10 h-10 rounded-xl bg-teal-50 text-[#095c51] flex items-center justify-center"><FileText className="w-5 h-5" /></div>
                                         <div>
-                                            <div className="text-xs font-bold text-slate-900">Fotokopi Akta Kelahiran</div>
+                                            <div className="text-xs font-bold text-slate-900">Fotokopi Akta Kelahiran (Wajib)</div>
                                             <div className="text-[11px] text-slate-400">
-                                                {fileAkta ? <span className="text-emerald-600 font-semibold">{fileAkta.name}</span> : "Format PDF/JPG, maks 2 MB"}
+                                                {fileAkta ? <span className="text-emerald-600 font-semibold flex items-center gap-1"><Check className="w-3.5 h-3.5" /> {fileAkta.name}</span> : <span className="text-rose-500 font-semibold">Belum dipilih — Format PDF/JPG, maks 2 MB</span>}
                                             </div>
                                         </div>
                                     </div>
@@ -842,11 +1185,11 @@ export default function PortalOrangTua({
 
                                 <div className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between shadow-xs">
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">🖼️</div>
+                                        <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><ImageIcon className="w-5 h-5" /></div>
                                         <div>
-                                            <div className="text-xs font-bold text-slate-900">Pas Foto Anak (3x4)</div>
+                                            <div className="text-xs font-bold text-slate-900">Pas Foto Anak (3x4) (Wajib)</div>
                                             <div className="text-[11px] text-slate-400">
-                                                {fileFoto ? <span className="text-emerald-600 font-semibold">{fileFoto.name}</span> : "Foto berlatar belakang merah/biru"}
+                                                {fileFoto ? <span className="text-emerald-600 font-semibold flex items-center gap-1"><Check className="w-3.5 h-3.5" /> {fileFoto.name}</span> : <span className="text-rose-500 font-semibold">Belum dipilih — Foto berlatar belakang merah/biru</span>}
                                             </div>
                                         </div>
                                     </div>
@@ -858,11 +1201,11 @@ export default function PortalOrangTua({
 
                                 <div className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between shadow-xs">
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">🪪</div>
+                                        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><IdCard className="w-5 h-5" /></div>
                                         <div>
-                                            <div className="text-xs font-bold text-slate-900">Kartu Identitas Anak (KIA) / Opsional</div>
+                                            <div className="text-xs font-bold text-slate-900">Kartu Identitas Anak (KIA) (Wajib)</div>
                                             <div className="text-[11px] text-slate-400">
-                                                {fileKia ? <span className="text-emerald-600 font-semibold">{fileKia.name}</span> : "Jika sudah memiliki KIA"}
+                                                {fileKia ? <span className="text-emerald-600 font-semibold flex items-center gap-1"><Check className="w-3.5 h-3.5" /> {fileKia.name}</span> : <span className="text-rose-500 font-semibold">Belum dipilih — Format PDF/JPG, maks 2 MB</span>}
                                             </div>
                                         </div>
                                     </div>
@@ -893,6 +1236,39 @@ export default function PortalOrangTua({
                                         <p className="text-[11px] text-slate-500 mt-1">Pilih slot kedatangan ke sekretariat sekolah untuk penyerahan berkas fisik.</p>
                                     </div>
                                 </div>
+
+                                {/* Tampilan Tambahan Khusus Onsite Booking Slot[cite: 2] */}
+                                {jalurPendaftaran === 'Onsite' && (
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                                        <div className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                                            <MapPin className="w-4 h-4 shrink-0" />
+                                            <span>Booking Slot Kedatangan Onsite</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tanggal Kedatangan</label>
+                                                <input
+                                                    type="date"
+                                                    value={tanggalKedatangan}
+                                                    onChange={(e) => setTanggalKedatangan(e.target.value)}
+                                                    className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pilihan Jam (Slot)</label>
+                                                <select
+                                                    value={jamKedatangan}
+                                                    onChange={(e) => setJamKedatangan(e.target.value)}
+                                                    className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs focus:outline-none cursor-pointer"
+                                                >
+                                                    <option value="08.00 - 09.00 WIB (Sisa 3 slot)">08.00 - 09.00 WIB (Sisa 3 slot)</option>
+                                                    <option value="09.00 - 10.00 WIB (Sisa 5 slot)">09.00 - 10.00 WIB (Sisa 5 slot)</option>
+                                                    <option value="10.00 - 11.00 WIB (Sisa 2 slot)">10.00 - 11.00 WIB (Sisa 2 slot)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -904,7 +1280,27 @@ export default function PortalOrangTua({
                             ) : <div />}
 
                             {modalStep < 3 ? (
-                                <button onClick={() => setModalStep(modalStep + 1)} className="px-6 py-2.5 bg-[#095c51] hover:bg-[#074840] text-white rounded-xl text-xs font-bold cursor-pointer shadow-sm">
+                                <button
+                                    onClick={() => {
+                                        // Validasi sebelum pindah langkah
+                                        if (modalStep === 1) {
+                                            if (!namaAnak || !tglLahirAnak || !nikAnak) {
+                                                alert("Mohon lengkapi data utama anak (Nama, Tanggal Lahir, NIK)!");
+                                                return;
+                                            }
+                                            if (!/^\d{16}$/.test(nikAnak)) {
+                                                alert("NIK harus terdiri dari tepat 16 digit angka!");
+                                                return;
+                                            }
+                                        }
+                                        if (modalStep === 2 && (!fileAkta || !fileFoto || !fileKia)) {
+                                            alert("Ketiga berkas wajib diunggah: Akta Kelahiran, Pas Foto, dan KIA!");
+                                            return;
+                                        }
+                                        setModalStep(modalStep + 1);
+                                    }}
+                                    className="px-6 py-2.5 bg-[#095c51] hover:bg-[#074840] text-white rounded-xl text-xs font-bold cursor-pointer shadow-sm"
+                                >
                                     Lanjut
                                 </button>
                             ) : (

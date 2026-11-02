@@ -89,6 +89,26 @@ export async function POST(request: Request) {
                 const fileFoto = formData.get('fileFoto') as File | null;
                 const fileKia = formData.get('fileKia') as File | null;
 
+                // NIK wajib tepat 16 digit angka
+                if (!/^\d{16}$/.test(nikAnak || '')) {
+                    return NextResponse.json(
+                        { success: false, error: 'NIK harus terdiri dari tepat 16 digit angka.' },
+                        { status: 400 }
+                    );
+                }
+
+                // Ketiga berkas anak wajib diunggah
+                if (
+                    !(fileAkta instanceof File) || fileAkta.size === 0 ||
+                    !(fileFoto instanceof File) || fileFoto.size === 0 ||
+                    !(fileKia instanceof File) || fileKia.size === 0
+                ) {
+                    return NextResponse.json(
+                        { success: false, error: 'Ketiga berkas wajib diunggah: Akta Kelahiran, Pas Foto, dan KIA.' },
+                        { status: 400 }
+                    );
+                }
+
                 const keluarga = await prisma.keluarga.findUnique({
                     where: { email },
                 });
@@ -126,12 +146,17 @@ export async function POST(request: Request) {
                 }
 
                 // Simpan data anak ke database
+                const jenisKelamin = (formData.get('jenisKelamin') as string) || 'Laki-laki';
+                const jalurPendaftaran = (formData.get('jalurPendaftaran') as string) || 'Daring';
+
                 const newAnak = await prisma.anak.create({
                     data: {
                         idKeluarga: keluarga.idKeluarga,
                         nama: namaAnak,
                         nik: nikAnak,
                         tglLahir: new Date(tglLahirAnak || '2021-05-10'),
+                        jenisKelamin,
+                        jalurPendaftaran,
                         status: 'PENDAFTAR',
                     },
                 });

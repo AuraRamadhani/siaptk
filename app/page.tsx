@@ -28,11 +28,35 @@ export default function Home() {
     {
       id: 'c1',
       name: 'Muhammad Al Fatih',
-      classGroup: 'Kelompok B1 (Usia 5-6 Tahun)',
+      birthDate: '2021-09-01',  // Tanggal lahir ditambahkan
+      classGroup: 'TK A',  // Disingkat: hanya nama kelompok
       sppStatus: 'Lunas',
       savingsBalance: 250000,
     }
   ]);
+
+  // Fungsi hitung grup dari tanggal lahir
+  const calculateGroupFromBirthDate = (dateStr: string) => {
+    if (!dateStr) return 'Kelompok A1 (Baru)';
+    const birthDate = new Date(dateStr);
+    const cutoffDate = new Date('2026-07-01');
+
+    let age = cutoffDate.getFullYear() - birthDate.getFullYear();
+    const m = cutoffDate.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && cutoffDate.getDate() < birthDate.getDate())) {
+      age--;
+    }
+
+    if (age >= 5 && age <= 6) {
+      return 'TK B';
+    } else if (age >= 4 && age < 5) {
+      return 'TK A';
+    } else if (age >= 3 && age < 4) {
+      return 'KB';
+    } else {
+      return 'Kelompok A1 (Baru)';
+    }
+  };
 
   // Fungsi Tambah Anak Baru / PPDB yang terhubung ke database API /api/auth
   const handleRegisterNewChild = async () => {
@@ -77,12 +101,34 @@ export default function Home() {
 
       if (result.success) {
         alert("Anak baru berhasil didaftarkan ke database SIAP TK!");
+        // Hitung kelompok otomatis dari tanggal lahir
+        const calculateGroupFromBirthDate = (dateStr: string) => {
+          if (!dateStr) return 'Kelompok A1 (Baru)';
+          const birthDate = new Date(dateStr);
+          const cutoffDate = new Date('2026-07-01');
+          let age = cutoffDate.getFullYear() - birthDate.getFullYear();
+          const m = cutoffDate.getMonth() - birthDate.getMonth();
+          if (m < 0 || (m === 0 && cutoffDate.getDate() < birthDate.getDate())) {
+            age--;
+          }
+          if (age >= 5 && age <= 6) {
+            return 'Kelompok B (TK B) - Usia 5-6 Tahun';
+          } else if (age >= 4 && age < 5) {
+            return 'Kelompok A (TK A) - Usia 4-5 Tahun';
+          } else if (age >= 3 && age < 4) {
+            return 'Kelompok Bermain (KB) - Usia 3-4 Tahun';
+          } else {
+            return 'Kelompok A1 (Baru)';
+          }
+        };
+        const calculatedGroup = calculateGroupFromBirthDate(tglLahir);
         setChildrenData([
           ...childrenData,
           {
             id: 'c' + (childrenData.length + 1),
             name: name,
-            classGroup: 'Kelompok A1 (Baru)',
+            birthDate: tglLahir,  // Tambahkan tanggal lahir
+            classGroup: calculatedGroup,
             sppStatus: 'Menunggu Verifikasi',
             savingsBalance: 0,
           }

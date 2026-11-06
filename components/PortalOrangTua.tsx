@@ -86,6 +86,22 @@ export default function PortalOrangTua({
     const berkasUrl = (filename: string) => `/uploads/calon-siswa/${filename}`;
     const familyFileUrl = (filename: string) => `/uploads/${encodeURIComponent(filename)}`;
     const isImageFile = (filename: string) => /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(filename);
+    
+    // Fungsi hitung kelompok berdasarkan tanggal lahir
+    const hitungKelompok = (tglLahir: string) => {
+        if (!tglLahir) return 'TK B';
+        const birthDate = new Date(tglLahir);
+        const cutoffDate = new Date('2026-07-01');
+        let age = cutoffDate.getFullYear() - birthDate.getFullYear();
+        const m = cutoffDate.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && cutoffDate.getDate() < birthDate.getDate())) {
+            age--;
+        }
+        if (age >= 5 && age <= 6) return 'TK B';
+        if (age >= 4 && age < 5) return 'TK A';
+        if (age >= 3 && age < 4) return 'KB';
+        return 'TK B';
+    };
 
     // Tutup panel detail & preview saat berpindah tab
     useEffect(() => {
@@ -108,7 +124,7 @@ export default function PortalOrangTua({
                         name: ch.nama,
                         nik: ch.nik || '-',
                         jenisKelamin: ch.jenisKelamin || '-',
-                        group: ch.riwayatKelompok?.[0]?.kelompok?.nama || 'TK B',
+                        group: hitungKelompok(ch.tglLahir),
                         birthDate: new Date(ch.tglLahir).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
                         birthDateRaw: ch.tglLahir,
                         status: ch.status === 'AKTIF' ? 'Aktif' : 'Pendaftar',

@@ -19,13 +19,9 @@ export async function GET() {
       prisma.rekeningTabungan.findMany({ select: { saldo: true } }),
       prisma.tagihan.findMany({ select: { jenis: true, nominal: true, diskon: true, status: true } }),
       prisma.transaksiTabungan.findMany({
-        where: {
-          status: 'DIVERIFIKASI',
-          createdAt: { gte: awalBulan(new Date()) },
-        },
-        select: { jenis: true, nominal: true, createdAt: true },
+        select: { jenis: true, nominal: true },
       }),
-      prisma.transaksiTabungan.count({ where: { status: 'MENUNGGU' } }),
+      0,
     ]);
 
     const rupiah = (n: number) => Math.round(n * 100) / 100;

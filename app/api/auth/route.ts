@@ -189,6 +189,8 @@ export async function POST(request: Request) {
                     nik: body.nikAnak || `3171${Date.now()}`,
                     tglLahir: new Date(body.tglLahirAnak || '2021-05-10'),
                     status: 'PENDAFTAR',
+                    jenisKelamin: body.jenisKelamin || 'L',
+                    jalurPendaftaran: body.jalurPendaftaran || 'Daring',
                 },
             });
 

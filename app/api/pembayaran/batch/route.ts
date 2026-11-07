@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       }
 
       const pembayaran = await prisma.pembayaran.create({ data: pembayaranData });
-      await prisma.tagihan.update({ where: { idTagihan: tagihan.idTagihan }, data: { status: newStatus } });
+      await prisma.tagihan.update({ where: { idTagihan: tagihan.idTagihan }, data: { status: newStatus as any } });
 
       results.push({
         idTagihan: tagihan.idTagihan,

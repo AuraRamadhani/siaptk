@@ -124,6 +124,8 @@ export async function POST(request: Request) {
                     nik: nikAnak,
                     tglLahir: new Date(tglLahirAnak),
                     status: 'PENDAFTAR',
+                    jenisKelamin: 'L',
+                    jalurPendaftaran: 'Onsite',
                 },
             });
 

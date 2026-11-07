@@ -80,7 +80,7 @@ export async function POST(
     // Create pembayaran and update tagihan
     const [pembayaran] = await prisma.$transaction([
       prisma.pembayaran.create({ data: pembayaranData }),
-      prisma.tagihan.update({ where: { idTagihan }, data: { status: newStatus } }),
+      prisma.tagihan.update({ where: { idTagihan }, data: { status: newStatus as any } }),
     ]);
 
     return NextResponse.json({ success: true, data: pembayaran }, { status: 201 });

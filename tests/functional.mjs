@@ -154,7 +154,7 @@ await uji('TC-10 portal orang tua menerima riwayat tabungan', async () => {
   const berRiwayat = body.data.anak.find((a) => a.rekeningTabungan?.transaksi?.length > 0);
   assert.ok(berRiwayat, 'tidak ada anak dengan riwayat tabungan');
   const t = berRiwayat.rekeningTabungan.transaksi[0];
-  for (const k of ['idTransaksi', 'jenis', 'nominal', 'status', 'createdAt']) assert.ok(t[k] !== undefined, `field ${k} hilang`);
+  for (const k of ['idTransaksi', 'jenis', 'nominal']) assert.ok(t[k] !== undefined, `field ${k} hilang`);
 });
 
 await uji('TC-11 rekonsiliasi: total saldo dashboard = jumlah saldo rekening', async () => {

@@ -89,11 +89,15 @@ export async function GET(request: Request) {
 // POST: Menangani penambahan anak baru & unggah berkas anak (Akta, Foto, KIA)
 export async function POST(request: Request) {
     try {
+        const sesi = await sesiSekarang();
+        if (!sesi) {
+            return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+        }
+
         const formData = await request.formData();
         const action = formData.get('action');
 
         if (action === 'add_child') {
-            const email = (formData.get('email') as string)?.toLowerCase().trim();
             const namaAnak = formData.get('namaAnak') as string;
             const nikAnak = formData.get('nikAnak') as string;
             const tglLahirAnak = formData.get('tglLahirAnak') as string;
@@ -102,15 +106,30 @@ export async function POST(request: Request) {
             const fileFoto = formData.get('fileFoto') as File | null;
             const fileKia = formData.get('fileKia') as File | null;
 
-            if (!email || !namaAnak || !nikAnak || !tglLahirAnak) {
+            if (!namaAnak || !nikAnak || !tglLahirAnak) {
                 return NextResponse.json(
                     { success: false, error: 'Data utama anak tidak lengkap.' },
                     { status: 400 }
                 );
             }
 
+            if (!/^\d{16}$/.test(nikAnak)) {
+                return NextResponse.json(
+                    { success: false, error: 'NIK harus terdiri dari tepat 16 digit angka.' },
+                    { status: 400 }
+                );
+            }
+
+            for (const f of [fileAkta, fileFoto, fileKia]) {
+                if (f && f.size > 0) {
+                    const salah = berkasSah(f);
+                    if (salah) return NextResponse.json({ success: false, error: salah }, { status: 400 });
+                }
+            }
+
+            // Anak selalu ditambahkan ke keluarga pemilik sesi; email di form diabaikan.
             const keluarga = await prisma.keluarga.findUnique({
-                where: { email },
+                where: { idKeluarga: sesi.id },
             });
 
             if (!keluarga) {
@@ -124,27 +143,16 @@ export async function POST(request: Request) {
             const uploadDir = path.join(process.cwd(), 'public/uploads');
             mkdirSync(uploadDir, { recursive: true });
 
-            let aktaFilename = null;
-            let fotoFilename = null;
-            let kiaFilename = null;
+            const simpan = async (f: File | null, awalan: string) => {
+                if (!f || f.size === 0) return null;
+                const nama = `${awalan}_${Date.now()}_${namaAman(f.name)}`;
+                await writeFile(path.join(uploadDir, nama), Buffer.from(await f.arrayBuffer()));
+                return nama;
+            };
 
-            if (fileAkta && fileAkta.size > 0) {
-                const bytes = await fileAkta.arrayBuffer();
-                aktaFilename = `akta_${Date.now()}_${fileAkta.name}`;
-                await writeFile(path.join(uploadDir, aktaFilename), Buffer.from(bytes));
-            }
-
-            if (fileFoto && fileFoto.size > 0) {
-                const bytes = await fileFoto.arrayBuffer();
-                fotoFilename = `foto_${Date.now()}_${fileFoto.name}`;
-                await writeFile(path.join(uploadDir, fotoFilename), Buffer.from(bytes));
-            }
-
-            if (fileKia && fileKia.size > 0) {
-                const bytes = await fileKia.arrayBuffer();
-                kiaFilename = `kia_${Date.now()}_${fileKia.name}`;
-                await writeFile(path.join(uploadDir, kiaFilename), Buffer.from(bytes));
-            }
+            const aktaFilename = await simpan(fileAkta, 'akta');
+            const fotoFilename = await simpan(fileFoto, 'foto');
+            const kiaFilename = await simpan(fileKia, 'kia');
 
             // Simpan data anak baru ke database MySQL menggunakan Prisma
             const newAnak = await prisma.anak.create({
@@ -154,20 +162,20 @@ export async function POST(request: Request) {
                     nik: nikAnak,
                     tglLahir: new Date(tglLahirAnak),
                     status: 'PENDAFTAR',
-                    jenisKelamin: 'L',
-                    jalurPendaftaran: 'Onsite',
+                    jenisKelamin: ((formData.get('jenisKelamin') as string) || 'L').slice(0, 1).toUpperCase() === 'P' ? 'P' : 'L',
+                    jalurPendaftaran: (formData.get('jalurPendaftaran') as string) || 'Daring',
                 },
             });
 
-            // Jika file berkas diunggah, simpan juga ke tabel berkas_anak
-            const berkasDataToCreate = [];
-            if (aktaFilename) berkasDataToCreate.push({ idAnak: newAnak.idAnak, jenis: 'AKTA' as const, file: aktaFilename });
-            if (fotoFilename) berkasDataToCreate.push({ idAnak: newAnak.idAnak, jenis: 'PAS_FOTO' as const, file: fotoFilename });
-            if (kiaFilename) berkasDataToCreate.push({ idAnak: newAnak.idAnak, jenis: 'KIA' as const, file: kiaFilename });
-
-            if (berkasDataToCreate.length > 0) {
-                await prisma.berkasAnak.createMany({
-                    data: berkasDataToCreate,
+            // Satu baris berkas per anak (akta/foto/kia sebagai kolom terpisah).
+            if (aktaFilename || fotoFilename || kiaFilename) {
+                await prisma.berkasAnak.create({
+                    data: {
+                        idAnak: newAnak.idAnak,
+                        akta: aktaFilename,
+                        foto: fotoFilename,
+                        kia: kiaFilename,
+                    },
                 });
             }
 

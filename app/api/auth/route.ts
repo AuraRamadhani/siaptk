@@ -3,6 +3,22 @@ import { prisma } from '@/lib/prisma';
 import { writeFile } from 'fs/promises';
 import path from 'path';
 import { mkdirSync } from 'fs';
+import { sesiSekarang } from '@/lib/sesi';
+import { hashSandi } from '@/lib/sandi';
+
+const TIPE_BERKAS = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const MAKS_BERKAS = 5 * 1024 * 1024;
+
+function berkasSah(f: File): string | null {
+  if (f.size === 0) return null;
+  if (f.size > MAKS_BERKAS) return `Berkas ${f.name} melebihi 5 MB.`;
+  if (!TIPE_BERKAS.has(f.type)) return `Tipe berkas ${f.type || 'tidak dikenal'} tidak diizinkan (PDF/JPG/PNG).`;
+  return null;
+}
+
+function namaAman(nama: string): string {
+  return nama.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+}
 
 export async function POST(request: Request) {
     try {
@@ -13,7 +29,7 @@ export async function POST(request: Request) {
             const formData = await request.formData();
             const action = formData.get('action');
 
-            // --- REGISTRASI KELUARGA ---
+            // --- REGISTRASI KELUARGA (publik) ---
             if (action === 'register_keluarga') {
                 const namaAyah = formData.get('namaAyah') as string;
                 const namaIbu = formData.get('namaIbu') as string;
@@ -21,9 +37,24 @@ export async function POST(request: Request) {
                 const pekerjaanIbu = formData.get('pekerjaanIbu') as string;
                 const noHp = formData.get('noHp') as string;
                 const email = (formData.get('email') as string)?.toLowerCase().trim();
+                const kataSandi = (formData.get('password') as string) || '';
 
                 const fileKK = formData.get('fileKK') as File | null;
                 const fileKTP = formData.get('fileKTP') as File | null;
+
+                if (!email || !noHp || kataSandi.length < 6) {
+                    return NextResponse.json(
+                        { success: false, error: 'Email, nomor HP, dan kata sandi (min. 6 karakter) wajib diisi.' },
+                        { status: 400 }
+                    );
+                }
+
+                for (const f of [fileKK, fileKTP]) {
+                    if (f && f.size > 0) {
+                        const salah = berkasSah(f);
+                        if (salah) return NextResponse.json({ success: false, error: salah }, { status: 400 });
+                    }
+                }
 
                 const existingUser = await prisma.keluarga.findUnique({
                     where: { email },
@@ -36,25 +67,18 @@ export async function POST(request: Request) {
                     );
                 }
 
-                let kkFilename = null;
-                let ktpFilename = null;
-
                 const uploadDir = path.join(process.cwd(), 'public/uploads');
                 mkdirSync(uploadDir, { recursive: true });
 
-                if (fileKK && fileKK.size > 0) {
-                    const bytes = await fileKK.arrayBuffer();
-                    const buffer = Buffer.from(bytes);
-                    kkFilename = `kk_${Date.now()}_${fileKK.name}`;
-                    await writeFile(path.join(uploadDir, kkFilename), buffer);
-                }
+                const simpan = async (f: File | null, awalan: string) => {
+                    if (!f || f.size === 0) return null;
+                    const nama = `${awalan}_${Date.now()}_${namaAman(f.name)}`;
+                    await writeFile(path.join(uploadDir, nama), Buffer.from(await f.arrayBuffer()));
+                    return nama;
+                };
 
-                if (fileKTP && fileKTP.size > 0) {
-                    const bytes = await fileKTP.arrayBuffer();
-                    const buffer = Buffer.from(bytes);
-                    ktpFilename = `ktp_${Date.now()}_${fileKTP.name}`;
-                    await writeFile(path.join(uploadDir, ktpFilename), buffer);
-                }
+                const kkFilename = await simpan(fileKK, 'kk');
+                const ktpFilename = await simpan(fileKTP, 'ktp');
 
                 const newKeluarga = await prisma.keluarga.create({
                     data: {
@@ -62,6 +86,7 @@ export async function POST(request: Request) {
                         namaIbu,
                         noHp,
                         email,
+                        kataSandi: hashSandi(kataSandi),
                         alamat: `Pekerjaan Ayah: ${pekerjaanAyah || '-'}, Pekerjaan Ibu: ${pekerjaanIbu || '-'}`,
                         berkasKeluarga: {
                             create: [
@@ -80,7 +105,11 @@ export async function POST(request: Request) {
 
             // --- TAMBAH ANAK BARU DENGAN UPLOAD BERKAS (AKTA, FOTO, KIA) ---
             if (action === 'add_child') {
-                const email = (formData.get('email') as string)?.toLowerCase().trim();
+                const sesi = await sesiSekarang();
+                if (!sesi) {
+                    return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+                }
+
                 const namaAnak = formData.get('namaAnak') as string;
                 const nikAnak = formData.get('nikAnak') as string;
                 const tglLahirAnak = formData.get('tglLahirAnak') as string;
@@ -109,8 +138,14 @@ export async function POST(request: Request) {
                     );
                 }
 
+                for (const f of [fileAkta, fileFoto, fileKia]) {
+                    const salah = berkasSah(f);
+                    if (salah) return NextResponse.json({ success: false, error: salah }, { status: 400 });
+                }
+
+                // Anak selalu masuk ke keluarga pemilik sesi.
                 const keluarga = await prisma.keluarga.findUnique({
-                    where: { email },
+                    where: { idKeluarga: sesi.id },
                 });
 
                 if (!keluarga) {
@@ -123,27 +158,15 @@ export async function POST(request: Request) {
                 const uploadDir = path.join(process.cwd(), 'public/uploads');
                 mkdirSync(uploadDir, { recursive: true });
 
-                let aktaFilename = null;
-                let fotoFilename = null;
-                let kiaFilename = null;
+                const simpan = async (f: File, awalan: string) => {
+                    const nama = `${awalan}_${Date.now()}_${namaAman(f.name)}`;
+                    await writeFile(path.join(uploadDir, nama), Buffer.from(await f.arrayBuffer()));
+                    return nama;
+                };
 
-                if (fileAkta && fileAkta.size > 0) {
-                    const bytes = await fileAkta.arrayBuffer();
-                    aktaFilename = `akta_${Date.now()}_${fileAkta.name}`;
-                    await writeFile(path.join(uploadDir, aktaFilename), Buffer.from(bytes));
-                }
-
-                if (fileFoto && fileFoto.size > 0) {
-                    const bytes = await fileFoto.arrayBuffer();
-                    fotoFilename = `foto_${Date.now()}_${fileFoto.name}`;
-                    await writeFile(path.join(uploadDir, fotoFilename), Buffer.from(bytes));
-                }
-
-                if (fileKia && fileKia.size > 0) {
-                    const bytes = await fileKia.arrayBuffer();
-                    kiaFilename = `kia_${Date.now()}_${fileKia.name}`;
-                    await writeFile(path.join(uploadDir, kiaFilename), Buffer.from(bytes));
-                }
+                const aktaFilename = await simpan(fileAkta, 'akta');
+                const fotoFilename = await simpan(fileFoto, 'foto');
+                const kiaFilename = await simpan(fileKia, 'kia');
 
                 // Simpan data anak ke database
                 const jenisKelamin = (formData.get('jenisKelamin') as string) || 'Laki-laki';
@@ -155,24 +178,36 @@ export async function POST(request: Request) {
                         nama: namaAnak,
                         nik: nikAnak,
                         tglLahir: new Date(tglLahirAnak || '2021-05-10'),
-                        jenisKelamin,
+                        jenisKelamin: jenisKelamin.slice(0, 1).toUpperCase() === 'P' ? 'P' : 'L',
                         jalurPendaftaran,
                         status: 'PENDAFTAR',
                     },
                 });
 
+                // Satu baris berkas per anak.
+                await prisma.berkasAnak.create({
+                    data: { idAnak: newAnak.idAnak, akta: aktaFilename, foto: fotoFilename, kia: kiaFilename },
+                });
+
                 return NextResponse.json({ success: true, data: newAnak, message: 'Anak baru berhasil didaftarkan dengan berkas!' });
             }
+
+            return NextResponse.json({ success: false, error: 'Aksi API tidak valid.' }, { status: 400 });
         }
 
         // 2. LOGIN (JSON Request)
         const body = await request.json();
-        const { action, email } = body;
+        const { action } = body;
 
         // --- TAMBAH ANAK BARU TANPA UPLOAD BERKAS (JSON) ---
         if (action === 'add_child') {
+            const sesi = await sesiSekarang();
+            if (!sesi) {
+                return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+            }
+
             const keluarga = await prisma.keluarga.findUnique({
-                where: { email: email?.toLowerCase().trim() },
+                where: { idKeluarga: sesi.id },
             });
 
             if (!keluarga) {
@@ -182,14 +217,22 @@ export async function POST(request: Request) {
                 );
             }
 
+            const nik = body.nikAnak || `3171${Date.now()}`;
+            if (!/^\d{16}$/.test(nik)) {
+                return NextResponse.json(
+                    { success: false, error: 'NIK harus terdiri dari tepat 16 digit angka.' },
+                    { status: 400 }
+                );
+            }
+
             const newAnak = await prisma.anak.create({
                 data: {
                     idKeluarga: keluarga.idKeluarga,
                     nama: body.namaAnak,
-                    nik: body.nikAnak || `3171${Date.now()}`,
+                    nik,
                     tglLahir: new Date(body.tglLahirAnak || '2021-05-10'),
                     status: 'PENDAFTAR',
-                    jenisKelamin: body.jenisKelamin || 'L',
+                    jenisKelamin: String(body.jenisKelamin || 'L').slice(0, 1).toUpperCase() === 'P' ? 'P' : 'L',
                     jalurPendaftaran: body.jalurPendaftaran || 'Daring',
                 },
             });
@@ -197,23 +240,12 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: true, data: newAnak, message: 'Calon siswa baru berhasil didaftarkan.' });
         }
 
-        if (action === 'login') {
-            const keluarga = await prisma.keluarga.findUnique({
-                where: { email: email?.toLowerCase().trim() },
-                include: { anak: true, berkasKeluarga: true },
-            });
-
-            if (!keluarga) {
-                return NextResponse.json(
-                    { success: false, error: 'Akun dengan email tersebut tidak ditemukan.' },
-                    { status: 404 }
-                );
-            }
-
-            return NextResponse.json({ success: true, data: keluarga });
-        }
-
-        return NextResponse.json({ success: false, error: 'Aksi API tidak valid.' }, { status: 400 });
+        // Login berbasis email tanpa kata sandi dihapus: membocorkan seluruh data
+        // keluarga ke siapa pun yang tahu emailnya. Gunakan /api/auth/masuk.
+        return NextResponse.json(
+            { success: false, error: 'Aksi API tidak valid. Gunakan /api/auth/masuk untuk login.' },
+            { status: 400 }
+        );
     } catch (error: unknown) {
         console.error('API Error Detail:', error);
 
@@ -225,7 +257,7 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json(
-            { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan pada server database.' },
+            { success: false, error: 'Terjadi kesalahan pada server database.' },
             { status: 500 }
         );
     }

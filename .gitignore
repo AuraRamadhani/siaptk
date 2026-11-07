@@ -55,3 +55,6 @@ output*.txt
 prisma_pull_output.txt
 recover_check.py
 test_dev.js
+
+# contoh env boleh di-commit
+!.env.example

@@ -1,36 +1,143 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SIAP TK — TK Islam Nur Habib
 
-## Getting Started
+Sistem informasi administrasi PAUD/TK: pendaftaran, tagihan SPP, tabungan siswa,
+pengelompokan otomatis, jadwal kunjungan, arsip digital, tema & laporan mingguan.
 
-First, run the development server:
+**Stack:** Next.js 16 (App Router, Turbopack) · React 19 · Prisma 7 · MariaDB/MySQL · Tailwind 4
+
+---
+
+## 1. Menjalankan lokal
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env          # lalu isi DATABASE_URL + SESSION_SECRET
+npx prisma migrate deploy     # buat tabel
+node prisma/seed-akun.mjs     # akun staf & contoh keluarga
+node prisma/seed-demo.mjs     # data demo (7 keluarga, 14 siswa)
+npm run dev                   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Akun demo (kata sandi semua: `123456`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Peran | Email |
+|---|---|
+| Kepala Sekolah | `kepsek@siaptk.sch.id` |
+| Guru | `guru@siaptk.sch.id` |
+| Bendahara | `bendahara@siaptk.sch.id` |
+| Orang Tua | `keluarga.pratama@email.com` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 2. Peta fitur per peran
 
-To learn more about Next.js, take a look at the following resources:
+### Orang Tua (`/orang-tua`)
+- Dashboard ringkasan anak
+- **Pesan Kunjungan** — lihat slot tersedia, pesan, pantau status booking
+- Tagihan & pembayaran SPP
+- Tabungan anak
+- Pendaftaran anak baru + unggah berkas (KK, KTP, akta)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Guru (`/guru`)
+- **Laporan Mingguan** — isi aspek perkembangan (sosial/kognitif/motorik/emosi) + catatan
+- **Tema Pembelajaran** — kelola tema per minggu
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Bendahara (`/bendahara`)
+- Verifikasi pembayaran (satuan & batch)
+- Kelola tagihan SPP
+- Tabungan siswa (setor/tarik, verifikasi)
 
-## Deploy on Vercel
+### Kepala Sekolah (`/kepala-sekolah`)
+- Dashboard KPI
+- **Jadwal Kunjungan** — buat slot, lihat & konfirmasi/batalkan booking
+- **Pengelompokan** — kelompokkan siswa otomatis berdasarkan usia, keluarkan siswa
+- **Arsip Digital** — cari berdasarkan nama/NIK/tahun ajaran, verifikasi berkas
+- **Pendaftaran Onsite** — daftarkan keluarga + banyak anak sekaligus
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 3. Struktur API
+
+Semua endpoint mengembalikan `{ success, data | error }`.
+
+| Endpoint | Method | Akses |
+|---|---|---|
+| `/api/auth/masuk`, `/api/auth/keluar`, `/api/auth` | POST | publik / sesi |
+| `/api/anak` | GET, PATCH, DELETE | GET: sesi · PATCH: staf · DELETE: kepsek |
+| `/api/keluarga` | GET, POST, PATCH | orang tua sendiri / staf |
+| `/api/pendaftaran` | GET, PATCH | sesi |
+| `/api/pendaftaran/admin` | POST | kepsek |
+| `/api/tagihan` | GET, POST | bendahara / orang tua |
+| `/api/tagihan/[id]` | GET, PATCH, DELETE | bendahara |
+| `/api/tagihan/[id]/bayar` | POST | orang tua |
+| `/api/pembayaran/[id]/verifikasi` | PATCH | bendahara |
+| `/api/pembayaran/batch` | POST | bendahara |
+| `/api/tabungan` | GET, POST, PATCH | bendahara / orang tua |
+| `/api/slot-jadwal` | GET, POST, PATCH, DELETE | GET: publik · lainnya: kepsek |
+| `/api/booking-kunjungan` | GET, POST, PATCH, DELETE | orang tua / kepsek |
+| `/api/pengelompokan` | GET, POST, DELETE | kepsek / guru |
+| `/api/tema-pembelajaran` | GET, POST, PATCH, DELETE | guru / kepsek |
+| `/api/laporan-mingguan` | GET, POST, PATCH, DELETE | guru |
+| `/api/arsip` | GET, PATCH | staf |
+| `/api/dashboard` | GET | staf |
+
+Autentikasi: cookie HttpOnly berisi token HMAC-SHA256 (`lib/sesi.ts`), berlaku 7 hari.
+Proteksi halaman: `proxy.ts` (middleware). Otorisasi per endpoint dicek di route handler.
+
+---
+
+## 4. Deploy produksi
+
+### 4.1 Siapkan database
+MySQL 8 / MariaDB 10.6+. Buat database kosong:
+```sql
+CREATE DATABASE siaptk CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+### 4.2 Environment
+```env
+DATABASE_URL="mysql://user:password@host:3306/siaptk"
+SESSION_SECRET="<64 karakter acak>"
+NODE_ENV="production"
+```
+Generate `SESSION_SECRET`:
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+### 4.3 Build & jalankan
+```bash
+npm ci
+npx prisma migrate deploy
+npx prisma generate
+npm run build
+npm start          # default port 3000
+```
+
+### 4.4 Checklist produksi
+- [ ] `SESSION_SECRET` diisi acak, **bukan** nilai default
+- [ ] `DATABASE_URL` memakai user non-root dengan hak terbatas
+- [ ] HTTPS aktif (cookie sesi `secure` — set `NODE_ENV=production`)
+- [ ] Folder `public/unggahan` writable oleh proses Node
+- [ ] `npx prisma migrate deploy` dijalankan tiap rilis
+- [ ] Backup database terjadwal
+- [ ] Seed demo **tidak** dijalankan di produksi
+
+### 4.5 Catatan hosting
+- **VPS / cPanel Node.js**: `npm run build && npm start`, reverse proxy Nginx ke `:3000`.
+- **Vercel**: butuh MySQL yang dapat diakses publik (PlanetScale/Railway/Aiven); SQLite tidak didukung.
+- **Docker**: `node:22-alpine`, expose 3000, mount volume untuk `public/unggahan`.
+
+---
+
+## 5. Verifikasi
+
+```bash
+npx tsc --noEmit -p tsconfig.json   # type check
+npm run build                       # build produksi
+npm run lint                        # eslint
+node tests/functional.mjs           # 11 skenario end-to-end (butuh server jalan)
+```
+
+`tests/functional.mjs` menguji: login 4 peran, proteksi halaman, isolasi data antar
+keluarga, CRUD tagihan, dan alur pembayaran.

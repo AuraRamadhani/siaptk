@@ -46,6 +46,15 @@ export default function PanelKelompok() {
     }
   };
 
+  const keluarkan = async (idRiwayat: string, nama: string) => {
+    if (!confirm(`Keluarkan ${nama} dari kelompok?`)) return;
+    const res = await fetch(`/api/pengelompokan?idRiwayat=${encodeURIComponent(idRiwayat)}`, {
+      method: 'DELETE',
+    }).then((x) => x.json());
+    setPesan(res.success ? res.message : res.error);
+    if (res.success) muat();
+  };
+
   if (loading && !data) return <div className="p-6 text-xs text-slate-500">Memuat…</div>;
 
   return (
@@ -90,9 +99,17 @@ export default function PanelKelompok() {
             ) : (
               <ul className="divide-y divide-slate-100">
                 {k.riwayatKelompok.map((r) => (
-                  <li key={r.idRiwayat} className="px-6 py-2.5 flex justify-between text-xs">
+                  <li key={r.idRiwayat} className="px-6 py-2.5 flex justify-between items-center text-xs">
                     <span className="font-semibold text-slate-800">{r.anak.nama}</span>
-                    <span className="text-slate-500">{r.anak.nik}</span>
+                    <span className="flex items-center gap-3">
+                      <span className="text-slate-500">{r.anak.nik}</span>
+                      <button
+                        onClick={() => keluarkan(r.idRiwayat, r.anak.nama)}
+                        className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                      >
+                        Keluarkan
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>

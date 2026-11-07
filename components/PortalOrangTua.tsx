@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from "react";
+import PanelBookingOrangTua from '@/components/PanelBookingOrangTua';
 import logoSIAPTK from "../app/assets/siap-tk-logo.png";
 
 interface ParentViewProps {
@@ -267,6 +268,14 @@ export default function PortalOrangTua({
                             }`}
                     >
                         <span>Berkas Keluarga</span>
+                    </button>
+
+                    <button
+                        onClick={() => setActiveTab("booking")}
+                        className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${activeTab === "booking" ? "bg-teal-50 text-[#095c51] font-bold border-l-4 border-[#095c51]" : "text-slate-600 hover:bg-slate-50"
+                            }`}
+                    >
+                        <span>Pesan Kunjungan</span>
                     </button>
 
                     {/* Footer Sidebar Card Keluarga */}
@@ -608,6 +617,9 @@ export default function PortalOrangTua({
                             </div>
                         </div>
                     )}
+
+                    {/* TAB: PESAN KUNJUNGAN */}
+                    {activeTab === "booking" && <PanelBookingOrangTua />}
 
                     {/* TAB: BERKAS KELUARGA (Sesuai Referensi Gambar) */}
                     {activeTab === "family_files" && (

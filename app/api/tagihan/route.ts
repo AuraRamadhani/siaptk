@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, KELUARGA_AMAN } from "@/lib/prisma";
 import { sesiSekarang } from "@/lib/sesi";
 
 const PETUGAS = new Set(["BENDAHARA", "KEPALA_SEKOLAH"]);
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       where,
       include: {
         anak: {
-          include: { keluarga: true },
+          include: { keluarga: { select: KELUARGA_AMAN } },
         },
         pembayaran: true,
       },

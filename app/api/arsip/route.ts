@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma, KELUARGA_AMAN } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
 
 const STAF = ['KEPALA_SEKOLAH', 'BENDAHARA', 'GURU'];
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
       where,
       orderBy: { nama: 'asc' },
       include: {
-        keluarga: true,
+        keluarga: { select: KELUARGA_AMAN },
         berkasAnak: true,
         riwayatKelompok: {
           include: { kelompok: true, tahunAjaran: true },

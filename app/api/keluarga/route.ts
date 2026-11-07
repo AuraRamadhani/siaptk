@@ -21,6 +21,7 @@ function namaAman(nama: string): string {
   return nama.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
 }
 
+
 // GET: Mengambil data keluarga, anak, riwayat kelompok, dan tagihan
 // Tanpa ?email -> keluarga milik sesi sendiri (portal orang tua).
 export async function GET(request: Request) {
@@ -33,22 +34,25 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const email = searchParams.get('email');
 
+        const sertakan = {
+            anak: {
+                include: {
+                    riwayatKelompok: { include: { kelompok: true } },
+                    tagihan: true,
+                    rekeningTabungan: { include: { transaksi: { orderBy: { createdAt: 'desc' as const } } } },
+                },
+            },
+            berkasKeluarga: true,
+        };
+
         let keluarga;
         if (email) {
             // Staf boleh mencari keluarga mana pun; orang tua hanya dirinya sendiri.
             const staf = sesi.peran === 'BENDAHARA' || sesi.peran === 'KEPALA_SEKOLAH' || sesi.peran === 'GURU';
             keluarga = await prisma.keluarga.findUnique({
                 where: { email: email.toLowerCase().trim() },
-                include: {
-                    anak: {
-                        include: {
-                            riwayatKelompok: { include: { kelompok: true } },
-                            tagihan: true,
-                            rekeningTabungan: { include: { transaksi: { orderBy: { createdAt: 'desc' } } } },
-                        },
-                    },
-                    berkasKeluarga: true,
-                },
+                omit: { kataSandi: true },
+                include: sertakan,
             });
             if (keluarga && !staf && keluarga.idKeluarga !== sesi.id) {
                 return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
@@ -56,16 +60,8 @@ export async function GET(request: Request) {
         } else {
             keluarga = await prisma.keluarga.findUnique({
                 where: { idKeluarga: sesi.id },
-                include: {
-                    anak: {
-                        include: {
-                            riwayatKelompok: { include: { kelompok: true } },
-                            tagihan: true,
-                            rekeningTabungan: { include: { transaksi: { orderBy: { createdAt: 'desc' } } } },
-                        },
-                    },
-                    berkasKeluarga: true,
-                },
+                omit: { kataSandi: true },
+                include: sertakan,
             });
         }
 
@@ -201,5 +197,46 @@ export async function POST(request: Request) {
             { success: false, error: error.message || 'Terjadi kesalahan pada server database.' },
             { status: 500 }
         );
+    }
+}
+
+// PATCH /api/keluarga -> perbarui data kontak keluarga (orang tua sendiri / staf)
+export async function PATCH(request: Request) {
+    try {
+        const sesi = await sesiSekarang();
+        if (!sesi) {
+            return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+        }
+
+        const { idKeluarga, namaAyah, namaIbu, noHp, alamat } = await request.json();
+        const target = sesi.peran === 'ORANG_TUA' ? sesi.id : idKeluarga;
+        if (!target) {
+            return NextResponse.json({ success: false, error: 'idKeluarga wajib diisi.' }, { status: 400 });
+        }
+        if (sesi.peran === 'ORANG_TUA' && idKeluarga && idKeluarga !== sesi.id) {
+            return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+        }
+
+        const ada = await prisma.keluarga.findUnique({ where: { idKeluarga: target } });
+        if (!ada) {
+            return NextResponse.json({ success: false, error: 'Keluarga tidak ditemukan.' }, { status: 404 });
+        }
+
+        const updated = await prisma.keluarga.update({
+            where: { idKeluarga: target },
+            data: {
+                namaAyah: namaAyah !== undefined ? (namaAyah || null) : undefined,
+                namaIbu: namaIbu !== undefined ? (namaIbu || null) : undefined,
+                noHp: noHp ? String(noHp).trim() : undefined,
+                alamat: alamat !== undefined ? (alamat || null) : undefined,
+            },
+            // Jangan pernah kirim hash kata sandi ke klien.
+            select: { idKeluarga: true, namaAyah: true, namaIbu: true, noHp: true, email: true, alamat: true },
+        });
+
+        return NextResponse.json({ success: true, data: updated, message: 'Data keluarga diperbarui.' });
+    } catch (error: any) {
+        console.error('API Keluarga PATCH Error:', error);
+        return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
     }
 }

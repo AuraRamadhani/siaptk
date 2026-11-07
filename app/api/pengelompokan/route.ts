@@ -53,6 +53,39 @@ export async function GET() {
   }
 }
 
+// DELETE /api/pengelompokan?idRiwayat=... -> batalkan pengelompokan (KEPALA_SEKOLAH)
+export async function DELETE(request: Request) {
+  try {
+    const sesi = await sesiSekarang();
+    if (!sesi || sesi.peran !== 'KEPALA_SEKOLAH') {
+      return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const idRiwayat = searchParams.get('idRiwayat');
+    if (!idRiwayat) {
+      return NextResponse.json({ success: false, error: 'idRiwayat wajib diisi.' }, { status: 400 });
+    }
+
+    const riwayat = await prisma.riwayatKelompok.findUnique({
+      where: { idRiwayat },
+      include: { anak: true },
+    });
+    if (!riwayat) {
+      return NextResponse.json({ success: false, error: 'Riwayat tidak ditemukan.' }, { status: 404 });
+    }
+
+    await prisma.riwayatKelompok.delete({ where: { idRiwayat } });
+    return NextResponse.json({
+      success: true,
+      message: `${riwayat.anak.nama} dikeluarkan dari kelompok.`,
+    });
+  } catch (error: any) {
+    console.error('API Pengelompokan DELETE Error:', error);
+    return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
+  }
+}
+
 // POST /api/pengelompokan -> jalankan pengelompokan otomatis (KEPALA_SEKOLAH only)
 export async function POST() {
   try {

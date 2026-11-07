@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma, KELUARGA_AMAN } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
 
 // GET /api/tabungan?email=...            -> semua tabungan milik keluarga (portal orang tua)
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
         where: { status: status as any },
         orderBy: { createdAt: 'asc' },
         include: {
-          tabungan: { include: { anak: { include: { keluarga: true } } } },
+          tabungan: { include: { anak: { include: { keluarga: { select: KELUARGA_AMAN } } } } },
         },
       });
       return NextResponse.json({ success: true, data: antrean });
@@ -90,7 +90,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
     }
     const rekening = await prisma.rekeningTabungan.findMany({
-      include: { anak: { include: { keluarga: true } } },
+      include: { anak: { include: { keluarga: { select: KELUARGA_AMAN } } } },
       orderBy: { saldo: 'desc' },
     });
     return NextResponse.json({ success: true, data: rekening });

@@ -28,6 +28,22 @@ export const prisma =
     adapter,
   });
 
+/**
+ * Potongan `select` keluarga yang aman dikirim ke klien.
+ * Pakai ini setiap kali relasi keluarga ikut di-include dalam respons API —
+ * hash kata sandi tidak boleh pernah keluar dari server.
+ */
+export const KELUARGA_AMAN = {
+  idKeluarga: true,
+  namaAyah: true,
+  namaIbu: true,
+  noHp: true,
+  email: true,
+  alamat: true,
+  fileKK: true,
+  fileKTP: true,
+} as const;
+
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma, KELUARGA_AMAN } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
 
 const KEPALA = 'KEPALA_SEKOLAH';
@@ -15,7 +15,7 @@ export async function GET() {
     const data = await prisma.anak.findMany({
       where: { status: 'PENDAFTAR' },
       orderBy: { nama: 'asc' },
-      include: { keluarga: true, berkasAnak: true },
+      include: { keluarga: { select: KELUARGA_AMAN }, berkasAnak: true },
     });
     return NextResponse.json({ success: true, data });
   } catch (error: any) {

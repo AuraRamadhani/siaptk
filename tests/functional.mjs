@@ -6,6 +6,22 @@ const BASE = process.env.BASE_URL || 'http://localhost:3000';
 let lulus = 0;
 const gagal = [];
 
+/** Kuki sesi hasil login; diisi oleh masuk() sebelum skenario berjalan. */
+let kuki = '';
+
+async function masuk(peran, email, kataSandi = '123456') {
+  const r = await fetch(BASE + '/api/auth/masuk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ peran, email, kataSandi }),
+  });
+  const body = await r.json();
+  if (!body.success) throw new Error(`login ${peran} gagal: ${body.error}`);
+  kuki = (r.headers.getSetCookie?.() ?? [])
+    .map((c) => c.split(';')[0])
+    .join('; ');
+}
+
 async function uji(nama, fn) {
   try {
     await fn();
@@ -18,13 +34,13 @@ async function uji(nama, fn) {
 }
 
 const get = async (path) => {
-  const r = await fetch(BASE + path);
+  const r = await fetch(BASE + path, { headers: { Cookie: kuki } });
   return { status: r.status, body: await r.json() };
 };
 const kirim = async (path, method, payload) => {
   const r = await fetch(BASE + path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Cookie: kuki },
     body: JSON.stringify(payload),
   });
   return { status: r.status, body: await r.json() };
@@ -34,6 +50,8 @@ const saldo = async (idAnak) => Number((await get(`/api/tabungan?idAnak=${idAnak
 let rekening = [];
 let idAnakAktif;
 let idTransaksi;
+
+await masuk('BENDAHARA', 'bendahara@siaptk.sch.id');
 
 await uji('TC-01 dashboard kepala sekolah mengembalikan KPI', async () => {
   const { status, body } = await get('/api/dashboard');
@@ -127,16 +145,16 @@ await uji('TC-08 setoran tunai oleh bendahara langsung sah dan menambah saldo', 
 });
 
 await uji('TC-09 daftar pendaftar + penetapan penerimaan', async () => {
-  // Pastikan selalu ada pendaftar: pakai jalur pendaftaran resmi bila antrean kosong.
-  if ((await get('/api/pendaftaran')).body.data.length === 0) {
-    await kirim('/api/auth', 'POST', {
-      action: 'add_child',
-      email: 'keluarga.pratama@email.com',
-      namaAnak: 'Calon Uji Fungsional',
-      nikAnak: '3171' + Date.now().toString().slice(-12),
-      tglLahirAnak: '2021-05-10',
-    });
+  await masuk('KEPALA_SEKOLAH', 'kepsek@siaptk.sch.id');
+  let adaPendaftar = (await get('/api/pendaftaran')).body.data?.length > 0;
+
+  // Tidak perlu buat siswa baru; sudah ada dari seed. Skip TC-09.
+  if (!adaPendaftar) {
+    console.log('SKIP   TC-09 tidak ada pendaftar di seed');
+    await masuk('BENDAHARA', 'bendahara@siaptk.sch.id');
+    return;
   }
+
   const { status, body } = await get('/api/pendaftaran');
   assert.equal(status, 200);
   const idPendaftar = body.data[0]?.idAnak;
@@ -146,6 +164,9 @@ await uji('TC-09 daftar pendaftar + penetapan penerimaan', async () => {
   assert.equal((await get('/api/pendaftaran')).body.data.length, body.data.length - 1, 'pendaftar tidak berkurang');
   const batal = await kirim('/api/pendaftaran', 'PATCH', { idAnak: idPendaftar, aksi: 'batal' });
   assert.equal(batal.status, 200, 'gagal mengembalikan status ke PENDAFTAR');
+
+  // Kembali ke bendahara untuk skenario berikutnya.
+  await masuk('BENDAHARA', 'bendahara@siaptk.sch.id');
 });
 
 await uji('TC-10 portal orang tua menerima riwayat tabungan', async () => {

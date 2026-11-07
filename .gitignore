@@ -49,3 +49,9 @@ next-env.d.ts
 
 # Backup migrasi PostgreSQL lama
 /prisma/migrations-postgresql-backup/
+# sisa skrip debug lokal
+*.bat
+output*.txt
+prisma_pull_output.txt
+recover_check.py
+test_dev.js

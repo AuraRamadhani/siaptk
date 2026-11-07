@@ -1,5 +1,6 @@
 // src/components/InfoPublik.tsx
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any -- bentuk respons API belum punya tipe bersama; ditandai untuk dirapikan bertahap. */
 
 import React, { useState, useEffect } from 'react';
 import { Sparkles, CalendarDays, ClipboardList, CreditCard, MapPin, Phone } from 'lucide-react';

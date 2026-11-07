@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const future = searchParams.get('future') === '1';
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (future) {
       where.tanggal = { gte: new Date().toISOString().split('T')[0] };
     }
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     );
 
     return NextResponse.json({ success: true, data: slotDenganKuota });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API SlotJadwal GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -84,9 +84,9 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: slot, message: 'Slot jadwal dibuat.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API SlotJadwal POST Error:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Kesalahan server.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: (error as Error).message || 'Kesalahan server.' }, { status: 500 });
   }
 }
 
@@ -130,7 +130,7 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: updated, message: 'Slot jadwal diperbarui.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API SlotJadwal PATCH Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -173,7 +173,7 @@ export async function DELETE(request: Request) {
     await prisma.slotJadwal.delete({ where: { idSlot } });
 
     return NextResponse.json({ success: true, message: 'Slot jadwal dihapus.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API SlotJadwal DELETE Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }

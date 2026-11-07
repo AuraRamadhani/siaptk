@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any -- bentuk respons API belum punya tipe bersama; ditandai untuk dirapikan bertahap. */
 
 import React, { useState, useEffect } from "react";
 import PanelBookingOrangTua from '@/components/PanelBookingOrangTua';
@@ -375,7 +376,7 @@ export default function PortalOrangTua({
                                     <tbody className="divide-y divide-slate-100 text-slate-700">
                                         {familyChildren.length === 0 ? (
                                             <tr>
-                                                <td colSpan={6} className="p-6 text-center text-slate-400">Belum ada anak terdaftar. Klik "+ Tambah Anak Baru" untuk mendaftar.</td>
+                                                <td colSpan={6} className="p-6 text-center text-slate-400">Belum ada anak terdaftar. Klik &quot;+ Tambah Anak Baru&quot; untuk mendaftar.</td>
                                             </tr>
                                         ) : (
                                             familyChildren.map((ch) => (

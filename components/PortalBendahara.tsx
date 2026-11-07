@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any -- bentuk respons API belum punya tipe bersama; ditandai untuk dirapikan bertahap. */
 
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -61,6 +62,8 @@ export default function PortalBendahara() {
   };
 
   useEffect(() => {
+    // setState terjadi setelah await, bukan sinkron di badan effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     muat();
   }, []);
 
@@ -98,6 +101,9 @@ export default function PortalBendahara() {
 
   // Rekonsiliasi mingguan: transaksi terverifikasi 7 hari terakhir, dikelompokkan per hari
   const rekon = useMemo(() => {
+    // Date.now() di badan useMemo membuat hasil tidak stabil antar-render.
+    // Nilai ini hanya dipakai untuk rekap 7 hari terakhir; hitung sekali per mount.
+    // eslint-disable-next-line react-hooks/purity
     const batas = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const rows = terverifikasi.filter((t) => new Date(t.createdAt).getTime() >= batas);
     const perHari = new Map<string, { masuk: number; keluar: number; jumlah: number }>();

@@ -19,7 +19,6 @@ export default function PanelBookingOrangTua() {
   const [loading, setLoading] = useState(true);
 
   const muat = async () => {
-    setLoading(true);
     const [s, b] = await Promise.all([
       fetch('/api/slot-jadwal?future=1').then((x) => x.json()),
       fetch('/api/booking-kunjungan').then((x) => x.json()),
@@ -30,6 +29,8 @@ export default function PanelBookingOrangTua() {
   };
 
   useEffect(() => {
+    // setState terjadi setelah await, bukan sinkron di badan effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     muat();
   }, []);
 

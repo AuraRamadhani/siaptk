@@ -26,18 +26,18 @@ export async function GET(
     }
 
     // Orang tua hanya lihat tagihan anak sendiri.
-    if (sesi.peran === "ORANG_TUA" && (tagihan as any).anak?.idKeluarga !== sesi.id) {
+    if (sesi.peran === "ORANG_TUA" && tagihan.anak?.idKeluarga !== sesi.id) {
       return NextResponse.json({ success: false, error: "Tagihan bukan milik keluarga Anda." }, { status: 403 });
     }
 
     const data = {
       ...tagihan,
-      nominal: Number((tagihan as any).nominal),
-      diskon: Number((tagihan as any).diskon),
+      nominal: Number(tagihan.nominal),
+      diskon: Number(tagihan.diskon),
     };
 
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }
@@ -68,9 +68,9 @@ export async function PATCH(
 
     return NextResponse.json({
       success: true,
-      data: { ...tagihan, nominal: Number((tagihan as any).nominal), diskon: Number((tagihan as any).diskon) },
+      data: { ...tagihan, nominal: Number(tagihan.nominal), diskon: Number(tagihan.diskon) },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }
@@ -94,9 +94,9 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      data: { ...tagihan, nominal: Number((tagihan as any).nominal), diskon: Number((tagihan as any).diskon) },
+      data: { ...tagihan, nominal: Number(tagihan.nominal), diskon: Number(tagihan.diskon) },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }

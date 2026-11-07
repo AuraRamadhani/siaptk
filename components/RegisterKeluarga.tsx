@@ -1,5 +1,6 @@
 // src/components/RegisterKeluarga.tsx
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any -- bentuk respons API belum punya tipe bersama; ditandai untuk dirapikan bertahap. */
 
 import React, { useState, useRef } from 'react';
 import { ArrowLeft, Sparkles, Eye, EyeOff, Folder, Upload } from 'lucide-react';

@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const idKeluarga = searchParams.get("idKeluarga");
     const status = searchParams.get("status");
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (idAnak) where.idAnak = idAnak;
     if (status) where.status = status;
 
@@ -38,14 +38,14 @@ export async function GET(request: Request) {
       orderBy: { bulan: "desc" },
     });
 
-    const data = tagihan.map((t: any) => ({
+    const data = tagihan.map((t: { idTagihan: string; [k: string]: unknown }) => ({
       ...t,
       nominal: Number(t.nominal),
       diskon: Number(t.diskon),
     }));
 
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }
@@ -84,9 +84,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      data: { ...tagihan, nominal: Number((tagihan as any).nominal), diskon: Number((tagihan as any).diskon) },
+      data: { ...tagihan, nominal: Number(tagihan.nominal), diskon: Number(tagihan.diskon) },
     }, { status: 201 });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }

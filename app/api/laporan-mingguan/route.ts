@@ -27,7 +27,7 @@ export async function GET() {
     });
 
     return NextResponse.json({ success: true, data: laporan });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Laporan GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: laporan, message: 'Laporan ditambahkan.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Laporan POST Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -122,7 +122,7 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: updated, message: 'Laporan diperbarui.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Laporan PATCH Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -149,7 +149,7 @@ export async function DELETE(request: Request) {
 
     await prisma.laporanMingguan.delete({ where: { idLaporan } });
     return NextResponse.json({ success: true, message: 'Laporan dihapus.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Laporan DELETE Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }

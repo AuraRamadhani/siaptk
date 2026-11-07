@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import type { StatusBooking } from '@/app/generated/prisma/client';
 import { sesiSekarang } from '@/lib/sesi';
 
 // GET /api/booking-kunjungan -> daftar booking
@@ -32,7 +33,7 @@ export async function GET() {
     });
 
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API BookingKunjungan GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -97,9 +98,9 @@ export async function POST(request: Request) {
       data: booking,
       message: 'Pemesanan berhasil, menunggu konfirmasi.',
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API BookingKunjungan POST Error:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Kesalahan server.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: (error as Error).message || 'Kesalahan server.' }, { status: 500 });
   }
 }
 
@@ -145,11 +146,11 @@ export async function PATCH(request: Request) {
 
     const updated = await prisma.bookingKunjungan.update({
       where: { idBooking },
-      data: { status: status as any },
+      data: { status: status as StatusBooking },
     });
 
     return NextResponse.json({ success: true, data: updated, message: 'Status booking diperbarui.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API BookingKunjungan PATCH Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }

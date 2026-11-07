@@ -31,7 +31,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Pembayaran tidak ditemukan" }, { status: 404 });
     }
 
-    const idTagihan = (pembayaran as any).idTagihan;
+    const idTagihan = pembayaran.idTagihan;
 
     if (aksi === "verifikasi") {
       const [updatedPembayaran] = await prisma.$transaction([
@@ -59,7 +59,7 @@ export async function PATCH(
       ]);
       return NextResponse.json({ success: true, data: updatedPembayaran });
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Terjadi kesalahan pada server." }, { status: 500 });
   }

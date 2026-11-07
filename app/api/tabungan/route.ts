@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma, KELUARGA_AMAN } from '@/lib/prisma';
+import type { StatusVerifikasi } from '@/app/generated/prisma/client';
 import { sesiSekarang } from '@/lib/sesi';
 
 // GET /api/tabungan?email=...            -> semua tabungan milik keluarga (portal orang tua)
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
       }
       const antrean = await prisma.transaksiTabungan.findMany({
-        where: { status: status as any },
+        where: { status: status as StatusVerifikasi },
         orderBy: { createdAt: 'asc' },
         include: {
           tabungan: { include: { anak: { include: { keluarga: { select: KELUARGA_AMAN } } } } },
@@ -94,9 +95,9 @@ export async function GET(request: Request) {
       orderBy: { saldo: 'desc' },
     });
     return NextResponse.json({ success: true, data: rekening });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Tabungan GET Error:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Kesalahan server.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: (error as Error).message || 'Kesalahan server.' }, { status: 500 });
   }
 }
 
@@ -174,9 +175,9 @@ export async function POST(request: Request) {
       data: hasil,
       message: langsungSah ? 'Setoran tercatat dan saldo diperbarui.' : 'Pengajuan dikirim, menunggu verifikasi bendahara.',
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Tabungan POST Error:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Kesalahan server.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: (error as Error).message || 'Kesalahan server.' }, { status: 500 });
   }
 }
 
@@ -242,11 +243,11 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: hasil, message: aksi === 'tolak' ? 'Pengajuan ditolak.' : 'Transaksi diverifikasi.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Tabungan PATCH Error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Kesalahan server.' },
-      { status: error.http || 500 }
+      { success: false, error: (error as Error).message || 'Kesalahan server.' },
+      { status: (error as { http?: number }).http || 500 }
     );
   }
 }

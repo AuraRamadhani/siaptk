@@ -18,7 +18,7 @@ export async function GET() {
       include: { keluarga: { select: KELUARGA_AMAN }, berkasAnak: true },
     });
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Pendaftaran GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -61,7 +61,7 @@ export async function PATCH(request: Request) {
       data: updated,
       message: aksi === 'terima' ? 'Siswa ditetapkan sebagai siswa aktif.' : 'Penetapan dibatalkan.',
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Pendaftaran PATCH Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }

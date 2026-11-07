@@ -47,7 +47,7 @@ export async function GET() {
       success: true,
       data: { tahunAjaran: tahunAktif, kelompok, belumKelompok },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Pengelompokan GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -80,7 +80,7 @@ export async function DELETE(request: Request) {
       success: true,
       message: `${riwayat.anak.nama} dikeluarkan dari kelompok.`,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Pengelompokan DELETE Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -150,7 +150,7 @@ export async function POST() {
       data: { berhasil, gagal },
       message: `${berhasil.length} siswa dikelompokkan, ${gagal.length} gagal.`,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Pengelompokan POST Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }

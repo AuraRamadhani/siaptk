@@ -73,10 +73,10 @@ export async function GET(request: Request) {
         }
 
         return NextResponse.json({ success: true, data: keluarga });
-    } catch (error: any) {
+    } catch (error) {
         console.error("API Keluarga GET Error:", error);
         return NextResponse.json(
-            { success: false, error: error.message || 'Terjadi kesalahan pada server.' },
+            { success: false, error: (error as Error).message || 'Terjadi kesalahan pada server.' },
             { status: 500 }
         );
     }
@@ -183,10 +183,10 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json({ success: false, error: 'Aksi API tidak valid.' }, { status: 400 });
-    } catch (error: any) {
+    } catch (error) {
         console.error("API Keluarga POST Error:", error);
 
-        if (error.code === 'P2002') {
+        if ((error as { code?: string }).code === 'P2002') {
             return NextResponse.json(
                 { success: false, error: 'NIK anak tersebut sudah terdaftar di sistem.' },
                 { status: 409 }
@@ -194,7 +194,7 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json(
-            { success: false, error: error.message || 'Terjadi kesalahan pada server database.' },
+            { success: false, error: (error as Error).message || 'Terjadi kesalahan pada server database.' },
             { status: 500 }
         );
     }
@@ -235,7 +235,7 @@ export async function PATCH(request: Request) {
         });
 
         return NextResponse.json({ success: true, data: updated, message: 'Data keluarga diperbarui.' });
-    } catch (error: any) {
+    } catch (error) {
         console.error('API Keluarga PATCH Error:', error);
         return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
     }

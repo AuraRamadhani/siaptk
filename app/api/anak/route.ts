@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const idKeluarga = searchParams.get("idKeluarga");
 
     // Orang tua hanya bisa lihat anak sendiri; petugas bisa lihat semua dengan filter opsional.
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (sesi.peran === "ORANG_TUA") {
       where.idKeluarga = sesi.id;
     } else if (idKeluarga) {
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: anak });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }
@@ -63,7 +63,7 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: updated, message: "Data siswa diperbarui." });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API Anak PATCH Error:", error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }
@@ -86,7 +86,7 @@ export async function DELETE(request: Request) {
 
     await prisma.anak.delete({ where: { idAnak } });
     return NextResponse.json({ success: true, message: `Data ${anak.nama} dihapus.` });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API Anak DELETE Error:", error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }

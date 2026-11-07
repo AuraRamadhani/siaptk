@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import type { StatusTagihan } from "@/app/generated/prisma/client";
+import type { Prisma } from "@/app/generated/prisma/client";
 import { sesiSekarang } from "@/lib/sesi";
 
 const PETUGAS = new Set(["BENDAHARA", "KEPALA_SEKOLAH"]);
@@ -32,20 +34,20 @@ export async function POST(request: Request) {
 
     // Orang tua hanya boleh membayar tagihan anaknya sendiri.
     if (!PETUGAS.has(sesi.peran)) {
-      const milikSendiri = tagihanList.every((t) => (t as any).anak?.idKeluarga === sesi.id);
+      const milikSendiri = tagihanList.every((t) => t.anak?.idKeluarga === sesi.id);
       if (!milikSendiri) {
         return NextResponse.json({ success: false, error: "Tagihan bukan milik keluarga Anda." }, { status: 403 });
       }
     }
 
-    const results: any[] = [];
+    const results: unknown[] = [];
 
     for (const tagihan of tagihanList) {
-      const nominal = Number((tagihan as any).nominal);
-      const diskon = Number((tagihan as any).diskon);
+      const nominal = Number(tagihan.nominal);
+      const diskon = Number(tagihan.diskon);
       const totalBayar = nominal - diskon;
       let newStatus: string;
-      let pembayaranData: any = {
+      const pembayaranData: Prisma.PembayaranUncheckedCreateInput = {
         idTagihan: tagihan.idTagihan,
         metode,
       };
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
         newStatus = "LUNAS";
         pembayaranData.diverifikasiOleh = sesi.nama;
       } else if (metode === "TABUNGAN") {
-        const rekening = (tagihan as any).anak?.rekeningTabungan;
+        const rekening = tagihan.anak?.rekeningTabungan;
         if (!rekening || Number(rekening.saldo) < totalBayar) {
           results.push({ idTagihan: tagihan.idTagihan, status: "GAGAL", error: "Saldo tidak cukup", nominal: totalBayar });
           continue;
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
       }
 
       const pembayaran = await prisma.pembayaran.create({ data: pembayaranData });
-      await prisma.tagihan.update({ where: { idTagihan: tagihan.idTagihan }, data: { status: newStatus as any } });
+      await prisma.tagihan.update({ where: { idTagihan: tagihan.idTagihan }, data: { status: newStatus as StatusTagihan } });
 
       results.push({
         idTagihan: tagihan.idTagihan,
@@ -88,7 +90,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, data: results }, { status: 201 });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Terjadi kesalahan pada server." }, { status: 500 });
   }

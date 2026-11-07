@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const tahunAjaran = searchParams.get('tahunAjaran');
     const status = searchParams.get('status');
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (cari) {
       where.OR = [
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     const tahunAjaranList = await prisma.tahunAjaran.findMany({ orderBy: { periode: 'desc' } });
 
     return NextResponse.json({ success: true, data, tahunAjaranList });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Arsip GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -85,7 +85,7 @@ export async function PATCH(request: Request) {
     }
 
     return NextResponse.json({ success: true, message: 'Status berkas diperbarui.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Arsip PATCH Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }

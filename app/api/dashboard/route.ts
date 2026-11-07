@@ -78,7 +78,7 @@ export async function GET() {
         perJenis,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Dashboard Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }

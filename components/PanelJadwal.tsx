@@ -36,6 +36,8 @@ export default function PanelJadwal() {
   };
 
   useEffect(() => {
+    // setState terjadi setelah await, bukan sinkron di badan effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     muat();
   }, []);
 

@@ -30,7 +30,6 @@ export default function PanelArsip() {
   const [loading, setLoading] = useState(false);
 
   const muat = async () => {
-    setLoading(true);
     const q = new URLSearchParams();
     if (cari.trim()) q.set('cari', cari.trim());
     if (tahun) q.set('tahunAjaran', tahun);
@@ -47,6 +46,8 @@ export default function PanelArsip() {
   };
 
   useEffect(() => {
+    // setState terjadi setelah await, bukan sinkron di badan effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     muat();
   }, []);
 

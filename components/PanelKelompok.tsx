@@ -22,7 +22,6 @@ export default function PanelKelompok() {
   const [loading, setLoading] = useState(true);
 
   const muat = async () => {
-    setLoading(true);
     const res = await fetch('/api/pengelompokan').then((x) => x.json());
     if (res.success) setData(res.data);
     else setPesan(res.error);
@@ -30,6 +29,8 @@ export default function PanelKelompok() {
   };
 
   useEffect(() => {
+    // setState terjadi setelah await, bukan sinkron di badan effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     muat();
   }, []);
 

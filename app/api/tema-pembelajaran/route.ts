@@ -14,7 +14,7 @@ export async function GET() {
 
     const data = await prisma.temaPembelajaran.findMany({ orderBy: { mingguKe: 'asc' } });
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Tema GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: tema, message: 'Tema ditambahkan.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Tema POST Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -69,7 +69,7 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: updated, message: 'Tema diperbarui.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Tema PATCH Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
@@ -99,7 +99,7 @@ export async function DELETE(request: Request) {
 
     await prisma.temaPembelajaran.delete({ where: { idTema } });
     return NextResponse.json({ success: true, message: 'Tema dihapus.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Tema DELETE Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }

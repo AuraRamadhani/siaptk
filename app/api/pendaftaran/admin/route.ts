@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     }
 
     // Cek NIK duplikat
-    const nikList = anak.map((a: any) => String(a.nik));
+    const nikList = anak.map((a: { nik: unknown }) => String(a.nik));
     const duplikat = await prisma.anak.findMany({ where: { nik: { in: nikList } } });
     if (duplikat.length > 0) {
       return NextResponse.json(
@@ -94,8 +94,8 @@ export async function POST(request: Request) {
       data: hasil,
       message: `${hasil.anak.length} pendaftar berhasil ditambahkan (jalur Onsite).`,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Pendaftaran Admin POST Error:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Kesalahan server.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: (error as Error).message || 'Kesalahan server.' }, { status: 500 });
   }
 }

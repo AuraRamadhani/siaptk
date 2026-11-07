@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import FormMasuk from '@/components/FormMasuk';
 import { SLUGS_PERAN } from '@/lib/peran';
 import { sesiSekarang, SLUG } from '@/lib/sesi';
+/* eslint-disable @typescript-eslint/no-explicit-any -- bentuk respons API belum punya tipe bersama; ditandai untuk dirapikan bertahap. */
 
 /** Baca sesi di dalam Suspense: connection() jadi dynamic hole, bukan blocker prerender. */
 async function SudahMasuk({ peran }: { peran: string }) {

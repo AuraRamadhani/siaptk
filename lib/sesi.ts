@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
+import { connection } from 'next/server';
 
 export const NAMA_KUKI = 'siaptk_sesi';
 const RAHASIA = () => {
@@ -50,7 +51,15 @@ export function bacaToken(token: string | undefined): Sesi | null {
 
 /** Sesi aktif dari cookie (server component / route handler). */
 export async function sesiSekarang(): Promise<Sesi | null> {
-  // cookies() menandai render ini dinamis, jadi Date.now() di bacaToken() aman.
+  // connection() wajib: tanpa itu Date.now() di bacaToken() dianggap nilai tak
+  // stabil saat prerender dan build gagal (Blocking Route "/guru").
+  // Saat build, route handler ikut diprerender dan connection() melempar karena
+  // prerender sudah selesai — ditelan; di request nyata tidak pernah melempar.
+  try {
+    await connection();
+  } catch {
+    /* prerender selesai — abaikan */
+  }
   const jar = await cookies();
   return bacaToken(jar.get(NAMA_KUKI)?.value);
 }

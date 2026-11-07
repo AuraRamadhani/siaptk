@@ -1,16 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sesiSekarang } from "@/lib/sesi";
+
+const PETUGAS = new Set(["BENDAHARA", "KEPALA_SEKOLAH"]);
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ idPembayaran: string }> }
 ) {
   try {
+    const sesi = await sesiSekarang();
+    if (!sesi || !PETUGAS.has(sesi.peran)) {
+      return NextResponse.json({ success: false, error: "Hanya bendahara yang dapat memverifikasi." }, { status: 403 });
+    }
+
     const { idPembayaran } = await params;
     const body = await request.json();
-    const { aksi, diverifikasiOleh } = body;
+    const { aksi } = body;
 
-    if (!aksi || !["verifikasi", "tolak"].includes(aksi)) {
+    if (!["verifikasi", "tolak"].includes(aksi)) {
       return NextResponse.json({ success: false, error: "aksi harus 'verifikasi' atau 'tolak'" }, { status: 400 });
     }
 
@@ -29,7 +37,7 @@ export async function PATCH(
       const [updatedPembayaran] = await prisma.$transaction([
         prisma.pembayaran.update({
           where: { idPembayaran },
-          data: { diverifikasiOleh: diverifikasiOleh || "Admin" },
+          data: { diverifikasiOleh: sesi.nama },
         }),
         prisma.tagihan.update({
           where: { idTagihan },
@@ -53,6 +61,6 @@ export async function PATCH(
     }
   } catch (error: any) {
     console.error(error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Terjadi kesalahan pada server." }, { status: 500 });
   }
 }

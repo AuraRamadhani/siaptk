@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { sesiSekarang } from '@/lib/sesi';
 
-// GET /api/dashboard -> KPI ringkas untuk kepala sekolah
+// GET /api/dashboard -> KPI ringkas untuk kepala sekolah & bendahara
 export async function GET() {
   try {
+    const sesi = await sesiSekarang();
+    if (!sesi || !['KEPALA_SEKOLAH', 'BENDAHARA'].includes(sesi.peran)) {
+      return NextResponse.json({ success: false, error: 'Akses ditolak.' }, { status: 403 });
+    }
+
     const [
       totalSiswa,
       siswaAktif,
@@ -21,7 +27,7 @@ export async function GET() {
       prisma.transaksiTabungan.findMany({
         select: { jenis: true, nominal: true },
       }),
-      0,
+      prisma.tagihan.count({ where: { status: 'MENUNGGU_VERIFIKASI' } }),
     ]);
 
     const rupiah = (n: number) => Math.round(n * 100) / 100;
@@ -74,7 +80,7 @@ export async function GET() {
     });
   } catch (error: any) {
     console.error('API Dashboard Error:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Kesalahan server.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
   }
 }
 

@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sesiSekarang } from "@/lib/sesi";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ idTagihan: string }> }
 ) {
   try {
+    const sesi = await sesiSekarang();
+    if (!sesi) {
+      return NextResponse.json({ success: false, error: "Silakan login terlebih dahulu." }, { status: 401 });
+    }
+
     const { idTagihan } = await params;
     const tagihan = await prisma.tagihan.findUnique({
       where: { idTagihan },
@@ -19,6 +25,11 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Tagihan tidak ditemukan" }, { status: 404 });
     }
 
+    // Orang tua hanya lihat tagihan anak sendiri.
+    if (sesi.peran === "ORANG_TUA" && (tagihan as any).anak?.idKeluarga !== sesi.id) {
+      return NextResponse.json({ success: false, error: "Tagihan bukan milik keluarga Anda." }, { status: 403 });
+    }
+
     const data = {
       ...tagihan,
       nominal: Number((tagihan as any).nominal),
@@ -28,7 +39,7 @@ export async function GET(
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     console.error(error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }
 }
 
@@ -37,12 +48,17 @@ export async function PATCH(
   { params }: { params: Promise<{ idTagihan: string }> }
 ) {
   try {
+    const sesi = await sesiSekarang();
+    if (!sesi || !["BENDAHARA", "KEPALA_SEKOLAH"].includes(sesi.peran)) {
+      return NextResponse.json({ success: false, error: "Hanya bendahara yang dapat mengubah tagihan." }, { status: 403 });
+    }
+
     const { idTagihan } = await params;
     const body = await request.json();
     const { status } = body;
 
-    if (!status) {
-      return NextResponse.json({ success: false, error: "status wajib diisi" }, { status: 400 });
+    if (!["BELUM_BAYAR", "MENUNGGU_VERIFIKASI", "LUNAS", "DIBATALKAN"].includes(status)) {
+      return NextResponse.json({ success: false, error: "status tidak valid" }, { status: 400 });
     }
 
     const tagihan = await prisma.tagihan.update({
@@ -56,7 +72,7 @@ export async function PATCH(
     });
   } catch (error: any) {
     console.error(error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }
 }
 
@@ -65,6 +81,11 @@ export async function DELETE(
   { params }: { params: Promise<{ idTagihan: string }> }
 ) {
   try {
+    const sesi = await sesiSekarang();
+    if (!sesi || !["BENDAHARA", "KEPALA_SEKOLAH"].includes(sesi.peran)) {
+      return NextResponse.json({ success: false, error: "Hanya bendahara yang dapat membatalkan tagihan." }, { status: 403 });
+    }
+
     const { idTagihan } = await params;
     const tagihan = await prisma.tagihan.update({
       where: { idTagihan },
@@ -77,6 +98,6 @@ export async function DELETE(
     });
   } catch (error: any) {
     console.error(error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });
   }
 }

@@ -3,7 +3,15 @@ import { cookies } from 'next/headers';
 import { connection } from 'next/server';
 
 export const NAMA_KUKI = 'siaptk_sesi';
-const RAHASIA = process.env.SESSION_SECRET ?? 'dev-siaptk-ganti-di-produksi';
+const RAHASIA = () => {
+  const s = process.env.SESSION_SECRET;
+  if (s) return s;
+  // Jangan gagal saat build; gagal saat dipakai di production.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET wajib diatur di production. Set di .env.');
+  }
+  return 'dev-siaptk-128bits-random-ganti-di-produksi';
+};
 const UMUR_MS = 1000 * 60 * 60 * 8;
 
 export type Peran = 'ORANG_TUA' | 'GURU' | 'BENDAHARA' | 'KEPALA_SEKOLAH';
@@ -18,7 +26,7 @@ export const SLUG: Record<Peran, string> = {
 };
 
 const tandaTangan = (data: string) =>
-  createHmac('sha256', RAHASIA).update(data).digest('base64url');
+  createHmac('sha256', RAHASIA()).update(data).digest('base64url');
 
 export function buatToken(payload: Omit<Sesi, 'exp'>): string {
   const sesi: Sesi = { ...payload, exp: Date.now() + UMUR_MS };

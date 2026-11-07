@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { sesiSekarang } from '@/lib/sesi';
 
 // GET /api/tabungan?email=...            -> semua tabungan milik keluarga (portal orang tua)
 // GET /api/tabungan?status=MENUNGGU      -> antrean verifikasi (portal bendahara)
 // GET /api/tabungan?idAnak=...           -> satu rekening + riwayat
 export async function GET(request: Request) {
   try {
+    const sesi = await sesiSekarang();
+    if (!sesi) return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const email = searchParams.get('email');
     const status = searchParams.get('status');
@@ -28,6 +32,9 @@ export async function GET(request: Request) {
     };
 
     if (status) {
+      if (sesi.peran !== 'BENDAHARA' && sesi.peran !== 'KEPALA_SEKOLAH') {
+        return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+      }
       const antrean = await prisma.transaksiTabungan.findMany({
         where: { status: status as any },
         orderBy: { createdAt: 'asc' },
@@ -43,10 +50,20 @@ export async function GET(request: Request) {
         where: { idAnak },
         include: { transaksi: transaksiSelect, anak: true },
       });
+      if (!rekening) {
+        return NextResponse.json({ success: false, error: 'Rekening tidak ditemukan.' }, { status: 404 });
+      }
+      // Orang tua hanya boleh melihat rekening anaknya sendiri.
+      if (sesi.peran === 'ORANG_TUA' && rekening.anak.idKeluarga !== sesi.id) {
+        return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+      }
       return NextResponse.json({ success: true, data: rekening });
     }
 
     if (email) {
+      if (sesi.peran !== 'ORANG_TUA') {
+        return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+      }
       const keluarga = await prisma.keluarga.findUnique({
         where: { email: email.toLowerCase().trim() },
         include: {
@@ -61,10 +78,17 @@ export async function GET(request: Request) {
       if (!keluarga) {
         return NextResponse.json({ success: false, error: 'Keluarga tidak ditemukan.' }, { status: 404 });
       }
+      // Cegah baca data keluarga lain.
+      if (keluarga.idKeluarga !== sesi.id) {
+        return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+      }
       return NextResponse.json({ success: true, data: keluarga.anak });
     }
 
     // ringkasan seluruh siswa (dipakai bendahara & kepala sekolah)
+    if (sesi.peran !== 'BENDAHARA' && sesi.peran !== 'KEPALA_SEKOLAH') {
+      return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+    }
     const rekening = await prisma.rekeningTabungan.findMany({
       include: { anak: { include: { keluarga: true } } },
       orderBy: { saldo: 'desc' },
@@ -79,8 +103,11 @@ export async function GET(request: Request) {
 // POST /api/tabungan -> pengajuan / pencatatan transaksi baru
 export async function POST(request: Request) {
   try {
+    const sesi = await sesiSekarang();
+    if (!sesi) return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+
     const body = await request.json();
-    const { idAnak, jenis, nominal, metode, keterangan, idTagihan, dicatatOleh } = body;
+    const { idAnak, jenis, nominal, metode, keterangan, idTagihan } = body;
 
     const nilai = Number(nominal);
     if (!idAnak || !['SETOR', 'TARIK', 'BAYAR_SPP'].includes(jenis)) {
@@ -90,14 +117,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Nominal harus lebih besar dari 0.' }, { status: 400 });
     }
 
-    const rekening = await prisma.rekeningTabungan.findUnique({ where: { idAnak } });
+    const rekening = await prisma.rekeningTabungan.findUnique({ where: { idAnak }, include: { anak: true } });
     if (!rekening) {
       return NextResponse.json({ success: false, error: 'Rekening tabungan siswa belum dibuat.' }, { status: 404 });
     }
 
+    // Orang tua hanya boleh mengajukan transaksi untuk anaknya sendiri, dan tidak boleh menarik dana.
+    const staf = sesi.peran === 'BENDAHARA' || sesi.peran === 'KEPALA_SEKOLAH';
+    if (!staf) {
+      if (rekening.anak.idKeluarga !== sesi.id) {
+        return NextResponse.json({ success: false, error: 'Anak bukan tanggungan akun ini.' }, { status: 403 });
+      }
+      if (jenis === 'TARIK') {
+        return NextResponse.json({ success: false, error: 'Penarikan hanya dapat dilakukan bendahara.' }, { status: 403 });
+      }
+    }
+
     // Setoran tunai yang dicatat langsung oleh bendahara sah tanpa antrean verifikasi.
-    // ponytail: satu aturan verifikasi untuk semua jalur; pecah per-role kalau login asli sudah ada.
-    const langsungSah = jenis === 'SETOR' && metode === 'TUNAI' && Boolean(dicatatOleh);
+    const langsungSah = jenis === 'SETOR' && metode === 'TUNAI' && staf;
 
     if (jenis !== 'SETOR') {
       if (Number(rekening.saldo) < nilai) {
@@ -117,7 +154,8 @@ export async function POST(request: Request) {
           nominal: nilai,
           keterangan: keterangan || null,
           idTagihan: idTagihan || null,
-          dicatatOleh: dicatatOleh || null,
+          // Dicatat dari sesi, bukan dari body: jejak audit tidak bisa dipalsukan klien.
+          dicatatOleh: sesi.nama,
           status: langsungSah ? 'DIVERIFIKASI' : 'MENUNGGU',
         },
       });
@@ -145,8 +183,14 @@ export async function POST(request: Request) {
 // PATCH /api/tabungan -> verifikasi / tolak pengajuan oleh bendahara
 export async function PATCH(request: Request) {
   try {
+    const sesi = await sesiSekarang();
+    if (!sesi) return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+    if (sesi.peran !== 'BENDAHARA' && sesi.peran !== 'KEPALA_SEKOLAH') {
+      return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+    }
+
     const body = await request.json();
-    const { idTransaksi, aksi, diverifikasiOleh } = body;
+    const { idTransaksi, aksi } = body;
 
     if (!idTransaksi || !['verifikasi', 'tolak'].includes(aksi)) {
       return NextResponse.json({ success: false, error: 'idTransaksi dan aksi (verifikasi/tolak) wajib diisi.' }, { status: 400 });
@@ -163,7 +207,7 @@ export async function PATCH(request: Request) {
       if (aksi === 'tolak') {
         return tx.transaksiTabungan.update({
           where: { idTransaksi },
-          data: { status: 'DITOLAK', dicatatOleh: diverifikasiOleh || trx.dicatatOleh },
+          data: { status: 'DITOLAK', dicatatOleh: sesi.nama },
         });
       }
 
@@ -186,14 +230,14 @@ export async function PATCH(request: Request) {
           data: {
             idTagihan: trx.idTagihan,
             metode: 'TABUNGAN',
-            diverifikasiOleh: diverifikasiOleh || null,
+            diverifikasiOleh: sesi.nama,
           },
         });
       }
 
       return tx.transaksiTabungan.update({
         where: { idTransaksi },
-        data: { status: 'DIVERIFIKASI', dicatatOleh: diverifikasiOleh || trx.dicatatOleh },
+        data: { status: 'DIVERIFIKASI', dicatatOleh: sesi.nama },
       });
     });
 

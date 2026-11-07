@@ -3,41 +3,71 @@ import { prisma } from '@/lib/prisma';
 import { writeFile } from 'fs/promises';
 import path from 'path';
 import { mkdirSync } from 'fs';
+import { sesiSekarang } from '@/lib/sesi';
+
+/** Validasi berkas unggahan: hanya PDF/JPG/PNG, maksimum 5 MB. */
+const TIPE_BERKAS = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const MAKS_BERKAS = 5 * 1024 * 1024;
+
+function berkasSah(f: File): string | null {
+  if (f.size === 0) return null;
+  if (f.size > MAKS_BERKAS) return `Berkas ${f.name} melebihi 5 MB.`;
+  if (!TIPE_BERKAS.has(f.type)) return `Tipe berkas ${f.type || 'tidak dikenal'} tidak diizinkan (PDF/JPG/PNG).`;
+  return null;
+}
+
+/** Nama berkas aman: hanya huruf, angka, titik, garis bawah. */
+function namaAman(nama: string): string {
+  return nama.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+}
 
 // GET: Mengambil data keluarga, anak, riwayat kelompok, dan tagihan
+// Tanpa ?email -> keluarga milik sesi sendiri (portal orang tua).
 export async function GET(request: Request) {
     try {
+        const sesi = await sesiSekarang();
+        if (!sesi) {
+            return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+        }
+
         const { searchParams } = new URL(request.url);
         const email = searchParams.get('email');
 
-        if (!email) {
-            return NextResponse.json(
-                { success: false, error: 'Parameter email diperlukan.' },
-                { status: 400 }
-            );
-        }
-
-        const keluarga = await prisma.keluarga.findUnique({
-            where: { email: email.toLowerCase().trim() },
-            include: {
-                anak: {
-                    include: {
-                        riwayatKelompok: {
-                            include: { kelompok: true }
+        let keluarga;
+        if (email) {
+            // Staf boleh mencari keluarga mana pun; orang tua hanya dirinya sendiri.
+            const staf = sesi.peran === 'BENDAHARA' || sesi.peran === 'KEPALA_SEKOLAH' || sesi.peran === 'GURU';
+            keluarga = await prisma.keluarga.findUnique({
+                where: { email: email.toLowerCase().trim() },
+                include: {
+                    anak: {
+                        include: {
+                            riwayatKelompok: { include: { kelompok: true } },
+                            tagihan: true,
+                            rekeningTabungan: { include: { transaksi: { orderBy: { createdAt: 'desc' } } } },
                         },
-                        tagihan: true, // Menarik data tagihan masing-masing anak
-                        rekeningTabungan: {
-                            include: {
-                                transaksi: {
-                                    orderBy: { createdAt: 'desc' }
-                                }
-                            }
-                        }
-                    }
+                    },
+                    berkasKeluarga: true,
                 },
-                berkasKeluarga: true
-            },
-        });
+            });
+            if (keluarga && !staf && keluarga.idKeluarga !== sesi.id) {
+                return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
+            }
+        } else {
+            keluarga = await prisma.keluarga.findUnique({
+                where: { idKeluarga: sesi.id },
+                include: {
+                    anak: {
+                        include: {
+                            riwayatKelompok: { include: { kelompok: true } },
+                            tagihan: true,
+                            rekeningTabungan: { include: { transaksi: { orderBy: { createdAt: 'desc' } } } },
+                        },
+                    },
+                    berkasKeluarga: true,
+                },
+            });
+        }
 
         if (!keluarga) {
             return NextResponse.json(

@@ -3,8 +3,6 @@ import FormMasuk from '@/components/FormMasuk';
 import { infoPeran } from '@/lib/peran';
 import { sesiSekarang, SLUG } from '@/lib/sesi';
 
-export const instant = false;
-
 export default async function MasukPeran({ params }: { params: Promise<{ peran: string }> }) {
   const { peran } = await params;
   if (!infoPeran(peran)) notFound();

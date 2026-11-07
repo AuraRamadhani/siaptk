@@ -1,6 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import PanelJadwal from '@/components/PanelJadwal';
+import PanelKelompok from '@/components/PanelKelompok';
+import PanelArsip from '@/components/PanelArsip';
+import PanelPendaftaranAdmin from '@/components/PanelPendaftaranAdmin';
 
 type Dashboard = {
   siswa: { total: number; aktif: number; pendaftar: number };
@@ -25,7 +29,18 @@ type Pendaftar = {
 
 const rp = (n: number) => `Rp${Number(n || 0).toLocaleString('id-ID')}`;
 
+type Tab = 'dashboard' | 'jadwal' | 'kelompok' | 'arsip' | 'onsite';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'jadwal', label: 'Jadwal Kunjungan' },
+  { id: 'kelompok', label: 'Pengelompokan' },
+  { id: 'arsip', label: 'Arsip Digital' },
+  { id: 'onsite', label: 'Pendaftaran Onsite' },
+];
+
 export default function PortalKepalaSekolah() {
+  const [tab, setTab] = useState<Tab>('dashboard');
   const [data, setData] = useState<Dashboard | null>(null);
   const [pendaftar, setPendaftar] = useState<Pendaftar[]>([]);
   const [pesan, setPesan] = useState('');
@@ -80,19 +95,40 @@ export default function PortalKepalaSekolah() {
         <p className="text-xs text-slate-500 mt-1">Rekapitulasi keuangan dan penetapan penerimaan siswa baru.</p>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition ${
+              tab === t.id ? 'bg-[#095c51] text-white' : 'bg-white text-slate-600 border border-slate-200'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {pesan && (
         <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-2">{pesan}</div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpi.map((k) => (
-          <div key={k.label} className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">{k.label}</div>
-            <div className="text-xl font-extrabold text-slate-900 mt-2">{k.nilai}</div>
-            <div className="text-[11px] text-slate-500 mt-1">{k.sub}</div>
+      {tab === 'jadwal' && <PanelJadwal />}
+      {tab === 'kelompok' && <PanelKelompok />}
+      {tab === 'arsip' && <PanelArsip />}
+      {tab === 'onsite' && <PanelPendaftaranAdmin onSukses={muat} />}
+
+      {tab === 'dashboard' && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {kpi.map((k) => (
+              <div key={k.label} className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">{k.label}</div>
+                <div className="text-xl font-extrabold text-slate-900 mt-2">{k.nilai}</div>
+                <div className="text-[11px] text-slate-500 mt-1">{k.sub}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Penerimaan per jenis tagihan — bar CSS tanpa library */}
@@ -185,6 +221,8 @@ export default function PortalKepalaSekolah() {
           </table>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

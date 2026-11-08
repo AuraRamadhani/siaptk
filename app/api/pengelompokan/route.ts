@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
-
-const hitungUsia = (tglLahir: Date, acuan = new Date()) => {
-  let usia = acuan.getFullYear() - tglLahir.getFullYear();
-  const bulan = acuan.getMonth() - tglLahir.getMonth();
-  if (bulan < 0 || (bulan === 0 && acuan.getDate() < tglLahir.getDate())) usia--;
-  return usia;
-};
+import { hitungUsia, USIA_MIN, USIA_MAX } from '@/lib/usia';
 
 // GET /api/pengelompokan -> daftar kelompok + isi siswa tahun ajaran aktif
 export async function GET() {
@@ -120,12 +114,12 @@ export async function POST() {
     for (const anak of siswa) {
       const usia = hitungUsia(new Date(anak.tglLahir));
 
-      if (usia < 4) {
-        gagal.push({ nama: anak.nama, alasan: `Usia ${usia} tahun, minimal 4 tahun.` });
+      if (usia < USIA_MIN) {
+        gagal.push({ nama: anak.nama, alasan: `Usia ${usia} tahun, minimal ${USIA_MIN} tahun.` });
         continue;
       }
-      if (usia > 6) {
-        gagal.push({ nama: anak.nama, alasan: `Usia ${usia} tahun, maksimal 6 tahun.` });
+      if (usia > USIA_MAX) {
+        gagal.push({ nama: anak.nama, alasan: `Usia ${usia} tahun, maksimal ${USIA_MAX} tahun.` });
         continue;
       }
 

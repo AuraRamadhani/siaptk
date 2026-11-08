@@ -58,3 +58,9 @@ test_dev.js
 
 # contoh env boleh di-commit
 !.env.example
+
+# artefak pengujian lokal (tidak di-commit)
+/tests/uji/
+/scripts/buat-laporan-uji.py
+/docs/Laporan Pengujian SIAP TK (lengkap).xlsx
+

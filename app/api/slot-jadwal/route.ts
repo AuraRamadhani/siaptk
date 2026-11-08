@@ -11,7 +11,10 @@ export async function GET(request: Request) {
 
     const where: Record<string, unknown> = {};
     if (future) {
-      where.tanggal = { gte: new Date().toISOString().split('T')[0] };
+      // Kolom tanggal bertipe Date; kirim objek Date, bukan string ISO.
+      const hariIni = new Date();
+      hariIni.setHours(0, 0, 0, 0);
+      where.tanggal = { gte: hariIni };
     }
 
     const data = await prisma.slotJadwal.findMany({

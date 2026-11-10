@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- bentuk respons API belum punya tipe bersama; ditandai untuk dirapikan bertahap. */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Eye, Download, X } from 'lucide-react';
 
 type Trx = {
   idTransaksi: string;
@@ -9,6 +10,7 @@ type Trx = {
   metode: string;
   nominal: string | number;
   keterangan: string | null;
+  bukti?: string | null;
   status: 'MENUNGGU' | 'DIVERIFIKASI' | 'DITOLAK';
   dicatatOleh: string | null;
   createdAt: string;
@@ -21,6 +23,17 @@ type Rekening = {
   anak: { idAnak: string; nama: string; status: string };
 };
 
+type TagihanPending = {
+  idTagihan: string;
+  jenis: string;
+  bulan?: number | null;
+  nominal: number;
+  diskon: number;
+  status: string;
+  anak?: { nama: string; keluarga?: { namaAyah: string | null; namaIbu: string | null } };
+  pembayaran?: { idPembayaran: string; metode: string; buktiTransfer: string | null; diverifikasiOleh?: string | null }[];
+};
+
 const rp = (n: number) => `Rp${Number(n || 0).toLocaleString('id-ID')}`;
 const tgl = (iso: string) =>
   new Date(iso).toLocaleString('id-ID', {
@@ -30,12 +43,15 @@ const tgl = (iso: string) =>
     hour: '2-digit',
     minute: '2-digit',
   });
+const keUrlBerkas = (file: string) => (file.startsWith('/') || file.startsWith('http') ? file : `/uploads/${file}`);
 
 const LABEL: Record<string, string> = { SETOR: 'Setoran', TARIK: 'Penarikan', BAYAR_SPP: 'Bayar SPP' };
 
 export default function PortalBendahara() {
-  const [tab, setTab] = useState<'verifikasi' | 'tunai' | 'rekonsiliasi'>('verifikasi');
+  const [tab, setTab] = useState<'verifikasi' | 'tagihan' | 'riwayat' | 'tunai' | 'rekonsiliasi'>('verifikasi');
   const [antrean, setAntrean] = useState<Trx[]>([]);
+  const [tagihanPending, setTagihanPending] = useState<TagihanPending[]>([]);
+  const [tagihanLunas, setTagihanLunas] = useState<TagihanPending[]>([]);
   const [terverifikasi, setTerverifikasi] = useState<Trx[]>([]);
   const [rekening, setRekening] = useState<Rekening[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,19 +59,24 @@ export default function PortalBendahara() {
   const [idAnak, setIdAnak] = useState('');
   const [nominal, setNominal] = useState('');
   const [keterangan, setKeterangan] = useState('');
+  const [previewBukti, setPreviewBukti] = useState<{ label: string; url: string } | null>(null);
 
   const muat = async () => {
     setLoading(true);
     try {
-      const [a, v, r] = await Promise.all([
+      const [a, v, r, tg, tgLunas] = await Promise.all([
         fetch('/api/tabungan?status=MENUNGGU').then((x) => x.json()),
         fetch('/api/tabungan?status=DIVERIFIKASI').then((x) => x.json()),
         fetch('/api/tabungan').then((x) => x.json()),
+        fetch('/api/tagihan?status=MENUNGGU_VERIFIKASI').then((x) => x.json()),
+        fetch('/api/tagihan?status=LUNAS').then((x) => x.json()),
       ]);
       setAntrean(a.data || []);
       setTerverifikasi(v.data || []);
       setRekening(r.data || []);
-    } catch (e) {
+      setTagihanPending(tg.data || []);
+      setTagihanLunas(tgLunas.data || []);
+    } catch {
       setPesan('Gagal memuat data tabungan.');
     }
     setLoading(false);
@@ -74,6 +95,22 @@ export default function PortalBendahara() {
       body: JSON.stringify({ idTransaksi, aksi, diverifikasiOleh: 'Bendahara' }),
     }).then((x) => x.json());
     setPesan(res.success ? res.message : res.error);
+    muat();
+  };
+
+  const putuskanTagihan = async (idPembayaran: string, aksi: 'verifikasi' | 'tolak') => {
+    const res = await fetch(`/api/pembayaran/${idPembayaran}/verifikasi`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aksi }),
+    }).then((x) => x.json());
+    setPesan(
+      res.success
+        ? aksi === 'verifikasi'
+          ? 'Pembayaran tagihan diverifikasi (LUNAS).'
+          : 'Pembayaran tagihan ditolak.'
+        : res.error
+    );
     muat();
   };
 
@@ -102,7 +139,6 @@ export default function PortalBendahara() {
   // Rekonsiliasi mingguan: transaksi terverifikasi 7 hari terakhir, dikelompokkan per hari
   const rekon = useMemo(() => {
     // Date.now() di badan useMemo membuat hasil tidak stabil antar-render.
-    // Nilai ini hanya dipakai untuk rekap 7 hari terakhir; hitung sekali per mount.
     // eslint-disable-next-line react-hooks/purity
     const batas = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const rows = terverifikasi.filter((t) => new Date(t.createdAt).getTime() >= batas);
@@ -126,7 +162,7 @@ export default function PortalBendahara() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Portal Bendahara</h1>
           <p className="text-xs text-slate-500 mt-1">
-            Verifikasi setoran, catat transaksi tunai, dan rekonsiliasi mingguan.
+            Verifikasi setoran tabungan, pembayaran tagihan, catat transaksi tunai, dan rekonsiliasi mingguan.
           </p>
         </div>
         <div className="text-right">
@@ -137,7 +173,9 @@ export default function PortalBendahara() {
 
       <div className="flex gap-2 flex-wrap">
         {[
-          ['verifikasi', `Verifikasi (${antrean.length})`],
+          ['verifikasi', `Verifikasi Tabungan (${antrean.length})`],
+          ['tagihan', `Verifikasi Tagihan (${tagihanPending.length})`],
+          ['riwayat', `History Terverifikasi (${tagihanLunas.length + terverifikasi.length})`],
           ['tunai', 'Setoran Tunai'],
           ['rekonsiliasi', 'Rekonsiliasi Mingguan'],
         ].map(([k, label]) => (
@@ -160,7 +198,7 @@ export default function PortalBendahara() {
       {tab === 'verifikasi' && (
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-            <h2 className="text-sm font-bold text-slate-900">Menunggu Verifikasi</h2>
+            <h2 className="text-sm font-bold text-slate-900">Setoran Tabungan Menunggu Verifikasi</h2>
             <button onClick={muat} className="text-xs font-semibold text-[#095c51] cursor-pointer">
               Muat ulang
             </button>
@@ -168,46 +206,301 @@ export default function PortalBendahara() {
           {loading ? (
             <div className="p-6 text-xs text-slate-500">Memuat…</div>
           ) : antrean.length === 0 ? (
-            <div className="p-6 text-xs text-slate-500">Tidak ada pengajuan menunggu.</div>
+            <div className="p-6 text-xs text-slate-500">Tidak ada pengajuan tabungan menunggu.</div>
           ) : (
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-500">
-                <tr>
-                  <th className="text-left px-6 py-3 font-semibold">Siswa</th>
-                  <th className="text-left px-3 py-3 font-semibold">Jenis</th>
-                  <th className="text-right px-3 py-3 font-semibold">Nominal</th>
-                  <th className="text-left px-3 py-3 font-semibold">Waktu</th>
-                  <th className="text-right px-6 py-3 font-semibold">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {antrean.map((t) => (
-                  <tr key={t.idTransaksi} className="border-t border-slate-100">
-                    <td className="px-6 py-3 font-semibold text-slate-900">{t.tabungan?.anak?.nama || '-'}</td>
-                    <td className="px-3 py-3 text-slate-600">
-                      {LABEL[t.jenis]} · {t.metode}
-                    </td>
-                    <td className="px-3 py-3 text-right font-bold text-slate-900">{rp(Number(t.nominal))}</td>
-                    <td className="px-3 py-3 text-slate-500">{tgl(t.createdAt)}</td>
-                    <td className="px-6 py-3 text-right space-x-2">
-                      <button
-                        onClick={() => putuskan(t.idTransaksi, 'verifikasi')}
-                        className="px-3 py-1.5 rounded-lg bg-[#095c51] text-white font-bold cursor-pointer"
-                      >
-                        Verifikasi
-                      </button>
-                      <button
-                        onClick={() => putuskan(t.idTransaksi, 'tolak')}
-                        className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 font-bold cursor-pointer"
-                      >
-                        Tolak
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="text-left px-6 py-3 font-semibold">Siswa</th>
+                    <th className="text-left px-3 py-3 font-semibold">Jenis &amp; Keterangan</th>
+                    <th className="text-right px-3 py-3 font-semibold">Nominal</th>
+                    <th className="text-left px-3 py-3 font-semibold">Bukti</th>
+                    <th className="text-left px-3 py-3 font-semibold">Waktu</th>
+                    <th className="text-right px-6 py-3 font-semibold">Aksi</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {antrean.map((t) => (
+                    <tr key={t.idTransaksi} className="border-t border-slate-100">
+                      <td className="px-6 py-3 font-semibold text-slate-900">
+                        {t.tabungan?.anak?.nama || '-'}
+                        <span className="block text-[10px] font-normal text-slate-400">
+                          {t.tabungan?.anak?.keluarga?.namaAyah || t.tabungan?.anak?.keluarga?.namaIbu || ''}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-slate-600">
+                        <span className="font-semibold">{LABEL[t.jenis]} · {t.metode}</span>
+                        {t.keterangan && <span className="block text-[11px] text-slate-400">{t.keterangan}</span>}
+                      </td>
+                      <td className="px-3 py-3 text-right font-bold text-slate-900">{rp(Number(t.nominal))}</td>
+                      <td className="px-3 py-3">
+                        {t.bukti ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewBukti({
+                                label: `Bukti Setoran - ${t.tabungan?.anak?.nama || ''}`,
+                                url: keUrlBerkas(t.bukti!),
+                              })
+                            }
+                            className="inline-flex items-center gap-1 text-[#095c51] font-semibold hover:underline cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Lihat</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-slate-500">{tgl(t.createdAt)}</td>
+                      <td className="px-6 py-3 text-right space-x-2">
+                        <button
+                          onClick={() => putuskan(t.idTransaksi, 'verifikasi')}
+                          className="px-3 py-1.5 rounded-lg bg-[#095c51] text-white font-bold cursor-pointer"
+                        >
+                          Verifikasi
+                        </button>
+                        <button
+                          onClick={() => putuskan(t.idTransaksi, 'tolak')}
+                          className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 font-bold cursor-pointer"
+                        >
+                          Tolak
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
+        </div>
+      )}
+
+      {tab === 'tagihan' && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+            <h2 className="text-sm font-bold text-slate-900">Pembayaran Tagihan Menunggu Verifikasi</h2>
+            <button onClick={muat} className="text-xs font-semibold text-[#095c51] cursor-pointer">
+              Muat ulang
+            </button>
+          </div>
+          {tagihanPending.length === 0 ? (
+            <div className="p-6 text-xs text-slate-500">Tidak ada pembayaran tagihan yang menunggu verifikasi.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="text-left px-6 py-3 font-semibold">Siswa</th>
+                    <th className="text-left px-3 py-3 font-semibold">Tagihan</th>
+                    <th className="text-right px-3 py-3 font-semibold">Nominal</th>
+                    <th className="text-left px-3 py-3 font-semibold">Bukti Transfer</th>
+                    <th className="text-right px-6 py-3 font-semibold">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tagihanPending.map((tg) => {
+                    const bayar = tg.pembayaran?.[tg.pembayaran.length - 1];
+                    return (
+                      <tr key={tg.idTagihan} className="border-t border-slate-100">
+                        <td className="px-6 py-3 font-semibold text-slate-900">{tg.anak?.nama || '-'}</td>
+                        <td className="px-3 py-3 text-slate-600">{tg.jenis}</td>
+                        <td className="px-3 py-3 text-right font-bold text-slate-900">
+                          {rp(Number(tg.nominal) - Number(tg.diskon || 0))}
+                        </td>
+                        <td className="px-3 py-3">
+                          {bayar?.buktiTransfer ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewBukti({
+                                  label: `Bukti Pembayaran ${tg.jenis} - ${tg.anak?.nama || ''}`,
+                                  url: keUrlBerkas(bayar.buktiTransfer!),
+                                })
+                              }
+                              className="inline-flex items-center gap-1 text-[#095c51] font-semibold hover:underline cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Lihat Bukti</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3 text-right space-x-2">
+                          {bayar ? (
+                            <>
+                              <button
+                                onClick={() => putuskanTagihan(bayar.idPembayaran, 'verifikasi')}
+                                className="px-3 py-1.5 rounded-lg bg-[#095c51] text-white font-bold cursor-pointer"
+                              >
+                                Verifikasi
+                              </button>
+                              <button
+                                onClick={() => putuskanTagihan(bayar.idPembayaran, 'tolak')}
+                                className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 font-bold cursor-pointer"
+                              >
+                                Tolak
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'riwayat' && (
+        <div className="space-y-6">
+          {/* History Pembayaran Tagihan Terverifikasi / Lunas */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">History Pembayaran Tagihan Terverifikasi (Lunas)</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{tagihanLunas.length} pembayaran tagihan sudah lunas.</p>
+              </div>
+              <button onClick={muat} className="text-xs font-semibold text-[#095c51] cursor-pointer">
+                Muat ulang
+              </button>
+            </div>
+            {tagihanLunas.length === 0 ? (
+              <div className="p-6 text-xs text-slate-500">Belum ada pembayaran tagihan yang diverifikasi.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="text-left px-6 py-3 font-semibold">Siswa</th>
+                      <th className="text-left px-3 py-3 font-semibold">Tagihan</th>
+                      <th className="text-right px-3 py-3 font-semibold">Nominal</th>
+                      <th className="text-left px-3 py-3 font-semibold">Metode</th>
+                      <th className="text-left px-3 py-3 font-semibold">Diverifikasi Oleh</th>
+                      <th className="text-left px-3 py-3 font-semibold">Bukti</th>
+                      <th className="text-right px-6 py-3 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tagihanLunas.map((tg) => {
+                      const bayar = tg.pembayaran?.[tg.pembayaran.length - 1];
+                      return (
+                        <tr key={tg.idTagihan} className="border-t border-slate-100">
+                          <td className="px-6 py-3 font-semibold text-slate-900">
+                            {tg.anak?.nama || '-'}
+                            <span className="block text-[10px] font-normal text-slate-400">
+                              {tg.anak?.keluarga?.namaAyah || tg.anak?.keluarga?.namaIbu || ''}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">
+                            {tg.jenis === 'PENDAFTARAN'
+                              ? 'Biaya Pendaftaran PPDB'
+                              : tg.jenis === 'SPP' && tg.bulan
+                                ? `SPP Bulan ke-${tg.bulan}`
+                                : tg.jenis}
+                          </td>
+                          <td className="px-3 py-3 text-right font-bold text-slate-900">
+                            {rp(Number(tg.nominal) - Number(tg.diskon || 0))}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">{bayar?.metode || '-'}</td>
+                          <td className="px-3 py-3 text-slate-600">{bayar?.diverifikasiOleh || 'Bendahara'}</td>
+                          <td className="px-3 py-3">
+                            {bayar?.buktiTransfer ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPreviewBukti({
+                                    label: `Bukti Pembayaran ${tg.jenis} - ${tg.anak?.nama || ''}`,
+                                    url: keUrlBerkas(bayar.buktiTransfer!),
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 text-[#095c51] font-semibold hover:underline cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Lihat</span>
+                              </button>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                              LUNAS
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* History Transaksi Tabungan Terverifikasi */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="text-sm font-bold text-slate-900">History Transaksi Tabungan Terverifikasi</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{terverifikasi.length} transaksi tabungan terverifikasi.</p>
+            </div>
+            {terverifikasi.length === 0 ? (
+              <div className="p-6 text-xs text-slate-500">Belum ada transaksi tabungan terverifikasi.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="text-left px-6 py-3 font-semibold">Siswa</th>
+                      <th className="text-left px-3 py-3 font-semibold">Jenis &amp; Keterangan</th>
+                      <th className="text-right px-3 py-3 font-semibold">Nominal</th>
+                      <th className="text-left px-3 py-3 font-semibold">Dicatat / Verifikasi</th>
+                      <th className="text-left px-3 py-3 font-semibold">Bukti</th>
+                      <th className="text-right px-6 py-3 font-semibold">Waktu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {terverifikasi.map((t) => (
+                      <tr key={t.idTransaksi} className="border-t border-slate-100">
+                        <td className="px-6 py-3 font-semibold text-slate-900">{t.tabungan?.anak?.nama || '-'}</td>
+                        <td className="px-3 py-3 text-slate-600">
+                          <span className="font-semibold">{LABEL[t.jenis]} · {t.metode}</span>
+                          {t.keterangan && <span className="block text-[11px] text-slate-400">{t.keterangan}</span>}
+                        </td>
+                        <td className="px-3 py-3 text-right font-bold text-emerald-700">{rp(Number(t.nominal))}</td>
+                        <td className="px-3 py-3 text-slate-600">{t.dicatatOleh || 'Bendahara'}</td>
+                        <td className="px-3 py-3">
+                          {t.bukti ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewBukti({
+                                  label: `Bukti Tabungan - ${t.tabungan?.anak?.nama || ''}`,
+                                  url: keUrlBerkas(t.bukti!),
+                                })
+                              }
+                              className="inline-flex items-center gap-1 text-[#095c51] font-semibold hover:underline cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Lihat</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3 text-right text-slate-500">{tgl(t.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -292,6 +585,51 @@ export default function PortalBendahara() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* MODAL PREVIEW BUKTI */}
+      {previewBukti && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl p-6 shadow-2xl border border-slate-100 relative">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
+              <h2 className="text-base font-bold text-slate-900">{previewBukti.label}</h2>
+              <button
+                onClick={() => setPreviewBukti(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="bg-slate-100 rounded-2xl min-h-[300px] flex items-center justify-center overflow-hidden">
+              {previewBukti.url.toLowerCase().endsWith('.pdf') ? (
+                <iframe src={previewBukti.url} className="w-full h-[60vh] border-0 rounded-xl" title={previewBukti.label} />
+              ) : (
+                <img
+                  src={previewBukti.url}
+                  alt={previewBukti.label}
+                  className="max-w-full max-h-[60vh] object-contain rounded-xl"
+                />
+              )}
+            </div>
+            <div className="mt-4 flex justify-center gap-3">
+              <a
+                href={previewBukti.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#095c51] text-white rounded-xl text-xs font-bold hover:bg-[#074840] transition"
+              >
+                <Download className="w-4 h-4" />
+                <span>Unduh Bukti</span>
+              </a>
+              <button
+                onClick={() => setPreviewBukti(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
+import { otomatisKelompokAnak } from '@/lib/kelompok';
+import { buatTagihanPendaftaran } from '@/lib/tagihan';
 
 const KEPALA = 'KEPALA_SEKOLAH';
 
@@ -83,6 +85,8 @@ export async function POST(request: Request) {
             jalurPendaftaran: 'Onsite',
           },
         });
+        await otomatisKelompokAnak(tx, baru.idAnak, baru.tglLahir);
+        await buatTagihanPendaftaran(tx, baru.idAnak);
         anakDibuat.push(baru);
       }
 

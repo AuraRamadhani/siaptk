@@ -18,7 +18,7 @@ type Booking = {
 };
 
 const tgl = (s: string) => new Date(s).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-const jam = (s: string) => new Date(s).toTimeString().slice(0, 5);
+const jam = (s: string) => (s.includes('T') ? s.slice(11, 16) : s.slice(0, 5));
 
 export default function PanelJadwal() {
   const [slot, setSlot] = useState<Slot[]>([]);

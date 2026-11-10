@@ -4,6 +4,8 @@ import { writeFile } from 'fs/promises';
 import path from 'path';
 import { mkdirSync } from 'fs';
 import { sesiSekarang } from '@/lib/sesi';
+import { otomatisKelompokAnak } from '@/lib/kelompok';
+import { buatTagihanPendaftaran } from '@/lib/tagihan';
 
 /** Validasi berkas unggahan: hanya PDF/JPG/PNG, maksimum 5 MB. */
 const TIPE_BERKAS = new Set(['application/pdf', 'image/jpeg', 'image/png']);
@@ -38,7 +40,12 @@ export async function GET(request: Request) {
             anak: {
                 include: {
                     riwayatKelompok: { include: { kelompok: true } },
-                    tagihan: true,
+                    tagihan: { include: { pembayaran: true } },
+                    berkasAnak: true,
+                    laporanMingguan: {
+                        include: { tema: true },
+                        orderBy: { tema: { mingguKe: 'desc' as const } },
+                    },
                     rekeningTabungan: { include: { transaksi: { orderBy: { createdAt: 'desc' as const } } } },
                 },
             },
@@ -70,6 +77,22 @@ export async function GET(request: Request) {
                 { success: false, error: 'Data keluarga tidak ditemukan.' },
                 { status: 404 }
             );
+        }
+
+        // Pastikan setiap calon siswa (PENDAFTAR) yang belum punya tagihan PENDAFTARAN langsung dibuatkan
+        let perluMuatUlang = false;
+        for (const a of keluarga.anak) {
+            if (a.status === 'PENDAFTAR' && !a.tagihan.some((t) => t.jenis === 'PENDAFTARAN')) {
+                await buatTagihanPendaftaran(prisma, a.idAnak);
+                perluMuatUlang = true;
+            }
+        }
+        if (perluMuatUlang) {
+            keluarga = await prisma.keluarga.findUnique({
+                where: { idKeluarga: keluarga.idKeluarga },
+                omit: { kataSandi: true },
+                include: sertakan,
+            });
         }
 
         return NextResponse.json({ success: true, data: keluarga });
@@ -116,11 +139,20 @@ export async function POST(request: Request) {
                 );
             }
 
+            if (
+                !(fileAkta instanceof File) || fileAkta.size === 0 ||
+                !(fileFoto instanceof File) || fileFoto.size === 0 ||
+                !(fileKia instanceof File) || fileKia.size === 0
+            ) {
+                return NextResponse.json(
+                    { success: false, error: 'Semua berkas anak wajib diunggah: Akta Kelahiran, Pas Foto, dan KIA.' },
+                    { status: 400 }
+                );
+            }
+
             for (const f of [fileAkta, fileFoto, fileKia]) {
-                if (f && f.size > 0) {
-                    const salah = berkasSah(f);
-                    if (salah) return NextResponse.json({ success: false, error: salah }, { status: 400 });
-                }
+                const salah = berkasSah(f);
+                if (salah) return NextResponse.json({ success: false, error: salah }, { status: 400 });
             }
 
             // Anak selalu ditambahkan ke keluarga pemilik sesi; email di form diabaikan.
@@ -164,21 +196,73 @@ export async function POST(request: Request) {
             });
 
             // Satu baris berkas per anak (akta/foto/kia sebagai kolom terpisah).
-            if (aktaFilename || fotoFilename || kiaFilename) {
-                await prisma.berkasAnak.create({
-                    data: {
-                        idAnak: newAnak.idAnak,
-                        akta: aktaFilename,
-                        foto: fotoFilename,
-                        kia: kiaFilename,
-                    },
-                });
-            }
+            await prisma.berkasAnak.create({
+                data: {
+                    idAnak: newAnak.idAnak,
+                    akta: aktaFilename,
+                    foto: fotoFilename,
+                    kia: kiaFilename,
+                },
+            });
+
+            // Kelompokkan otomatis berdasarkan usia (KB: 3-4 th, TK A: 4-5 th, TK B: 5-6 th)
+            const hasilKelompok = await otomatisKelompokAnak(prisma, newAnak.idAnak, newAnak.tglLahir);
+
+            // Buat tagihan biaya pendaftaran secara otomatis agar langsung tampil di Tagihan & Pembayaran
+            await buatTagihanPendaftaran(prisma, newAnak.idAnak);
 
             return NextResponse.json({
                 success: true,
-                data: newAnak,
+                data: { ...newAnak, kelompokOtomatis: hasilKelompok?.info || null },
                 message: 'Anak baru berhasil didaftarkan dan berkas disimpan!'
+            });
+        }
+
+        if (action === 'upload_berkas_keluarga') {
+            const jenis = formData.get('jenis') as string;
+            const file = formData.get('file') as File | null;
+
+            if (!['KK', 'KTP_ORTU'].includes(jenis)) {
+                return NextResponse.json({ success: false, error: 'Jenis berkas tidak valid.' }, { status: 400 });
+            }
+            if (!(file instanceof File) || file.size === 0) {
+                return NextResponse.json({ success: false, error: 'File wajib dipilih.' }, { status: 400 });
+            }
+            const salah = berkasSah(file);
+            if (salah) {
+                return NextResponse.json({ success: false, error: salah }, { status: 400 });
+            }
+
+            const uploadDir = path.join(process.cwd(), 'public/uploads');
+            mkdirSync(uploadDir, { recursive: true });
+            const awalan = jenis === 'KK' ? 'kk' : 'ktp';
+            const namaFile = `${awalan}_${Date.now()}_${namaAman(file.name)}`;
+            await writeFile(path.join(uploadDir, namaFile), Buffer.from(await file.arrayBuffer()));
+
+            const lama = await prisma.berkasKeluarga.findFirst({
+                where: { idKeluarga: sesi.id, jenis: jenis as 'KK' | 'KTP_ORTU' },
+            });
+
+            if (lama) {
+                await prisma.berkasKeluarga.update({
+                    where: { idBerkasKel: lama.idBerkasKel },
+                    data: { file: namaFile, statusVerifikasi: 'MENUNGGU' },
+                });
+            } else {
+                await prisma.berkasKeluarga.create({
+                    data: { idKeluarga: sesi.id, jenis: jenis as 'KK' | 'KTP_ORTU', file: namaFile },
+                });
+            }
+
+            await prisma.keluarga.update({
+                where: { idKeluarga: sesi.id },
+                data: jenis === 'KK' ? { fileKK: namaFile } : { fileKTP: namaFile },
+            });
+
+            return NextResponse.json({
+                success: true,
+                data: { file: namaFile, jenis },
+                message: 'Berkas keluarga berhasil diperbarui.',
             });
         }
 

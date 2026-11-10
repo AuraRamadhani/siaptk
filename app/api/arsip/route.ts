@@ -41,7 +41,12 @@ export async function GET(request: Request) {
       where,
       orderBy: { nama: 'asc' },
       include: {
-        keluarga: { select: KELUARGA_AMAN },
+        keluarga: {
+          select: {
+            ...KELUARGA_AMAN,
+            berkasKeluarga: true,
+          },
+        },
         berkasAnak: true,
         riwayatKelompok: {
           include: { kelompok: true, tahunAjaran: true },

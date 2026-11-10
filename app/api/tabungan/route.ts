@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server';
 import { prisma, KELUARGA_AMAN } from '@/lib/prisma';
 import type { StatusVerifikasi } from '@/app/generated/prisma/client';
 import { sesiSekarang } from '@/lib/sesi';
+import { writeFile } from 'fs/promises';
+import path from 'path';
+import { mkdirSync } from 'fs';
+
+const TIPE_BUKTI = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const MAKS_BUKTI = 5 * 1024 * 1024;
+const namaAman = (nama: string) => nama.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
 
 // GET /api/tabungan?email=...            -> semua tabungan milik keluarga (portal orang tua)
 // GET /api/tabungan?status=MENUNGGU      -> antrean verifikasi (portal bendahara)
@@ -107,8 +114,34 @@ export async function POST(request: Request) {
     const sesi = await sesiSekarang();
     if (!sesi) return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
 
-    const body = await request.json();
-    const { idAnak, jenis, nominal, metode, keterangan, idTagihan } = body;
+    const contentType = request.headers.get('content-type') || '';
+    let idAnak = '';
+    let jenis = '';
+    let nominal: unknown = 0;
+    let metode = 'TUNAI';
+    let keterangan: string | null = null;
+    let idTagihan: string | null = null;
+    let buktiFile: File | null = null;
+
+    if (contentType.includes('multipart/form-data')) {
+      const fd = await request.formData();
+      idAnak = String(fd.get('idAnak') || '');
+      jenis = String(fd.get('jenis') || '');
+      nominal = fd.get('nominal');
+      metode = String(fd.get('metode') || 'TRANSFER');
+      keterangan = fd.get('keterangan') ? String(fd.get('keterangan')) : null;
+      idTagihan = fd.get('idTagihan') ? String(fd.get('idTagihan')) : null;
+      const f = fd.get('bukti');
+      if (f instanceof File && f.size > 0) buktiFile = f;
+    } else {
+      const body = await request.json();
+      idAnak = body.idAnak;
+      jenis = body.jenis;
+      nominal = body.nominal;
+      metode = body.metode || 'TUNAI';
+      keterangan = body.keterangan || null;
+      idTagihan = body.idTagihan || null;
+    }
 
     const nilai = Number(nominal);
     if (!idAnak || !['SETOR', 'TARIK', 'BAYAR_SPP'].includes(jenis)) {
@@ -118,20 +151,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Nominal harus lebih besar dari 0.' }, { status: 400 });
     }
 
-    const rekening = await prisma.rekeningTabungan.findUnique({ where: { idAnak }, include: { anak: true } });
-    if (!rekening) {
-      return NextResponse.json({ success: false, error: 'Rekening tabungan siswa belum dibuat.' }, { status: 404 });
+    if (buktiFile) {
+      if (buktiFile.size > MAKS_BUKTI) {
+        return NextResponse.json({ success: false, error: 'Ukuran bukti maksimal 5 MB.' }, { status: 400 });
+      }
+      if (!TIPE_BUKTI.has(buktiFile.type)) {
+        return NextResponse.json({ success: false, error: 'Format bukti harus JPG, PNG, atau PDF.' }, { status: 400 });
+      }
+    }
+
+    const anak = await prisma.anak.findUnique({ where: { idAnak }, include: { rekeningTabungan: true } });
+    if (!anak) {
+      return NextResponse.json({ success: false, error: 'Data siswa tidak ditemukan.' }, { status: 404 });
     }
 
     // Orang tua hanya boleh mengajukan transaksi untuk anaknya sendiri, dan tidak boleh menarik dana.
     const staf = sesi.peran === 'BENDAHARA' || sesi.peran === 'KEPALA_SEKOLAH';
     if (!staf) {
-      if (rekening.anak.idKeluarga !== sesi.id) {
+      if (anak.idKeluarga !== sesi.id) {
         return NextResponse.json({ success: false, error: 'Anak bukan tanggungan akun ini.' }, { status: 403 });
       }
       if (jenis === 'TARIK') {
         return NextResponse.json({ success: false, error: 'Penarikan hanya dapat dilakukan bendahara.' }, { status: 403 });
       }
+    }
+
+    let rekening = anak.rekeningTabungan;
+    if (!rekening) {
+      if (jenis !== 'SETOR') {
+        return NextResponse.json({ success: false, error: 'Rekening tabungan siswa belum dibuat.' }, { status: 404 });
+      }
+      rekening = await prisma.rekeningTabungan.create({
+        data: { idAnak, saldo: 0 },
+      });
+    }
+
+    let buktiFilename: string | null = null;
+    if (buktiFile) {
+      const uploadDir = path.join(process.cwd(), 'public/uploads');
+      mkdirSync(uploadDir, { recursive: true });
+      buktiFilename = `tabungan_${Date.now()}_${namaAman(buktiFile.name)}`;
+      await writeFile(path.join(uploadDir, buktiFilename), Buffer.from(await buktiFile.arrayBuffer()));
     }
 
     // Setoran tunai yang dicatat langsung oleh bendahara sah tanpa antrean verifikasi.
@@ -150,10 +210,11 @@ export async function POST(request: Request) {
       const trx = await tx.transaksiTabungan.create({
         data: {
           idTabungan: rekening.idTabungan,
-          jenis,
-          metode: metode || 'TUNAI',
+          jenis: jenis as 'SETOR' | 'TARIK' | 'BAYAR_SPP',
+          metode: (metode as 'TRANSFER' | 'TUNAI' | 'TABUNGAN') || 'TUNAI',
           nominal: nilai,
           keterangan: keterangan || null,
+          bukti: buktiFilename,
           idTagihan: idTagihan || null,
           // Dicatat dari sesi, bukan dari body: jejak audit tidak bisa dipalsukan klien.
           dicatatOleh: sesi.nama,
@@ -173,7 +234,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       data: hasil,
-      message: langsungSah ? 'Setoran tercatat dan saldo diperbarui.' : 'Pengajuan dikirim, menunggu verifikasi bendahara.',
+      message: langsungSah ? 'Setoran tercatat dan saldo diperbarui.' : 'Pengajuan setoran dikirim ke Bendahara untuk verifikasi.',
     });
   } catch (error) {
     console.error('API Tabungan POST Error:', error);

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { tentukanKelompokDariTglLahir } from '@/lib/usia';
 
 type AnakForm = { nama: string; nik: string; tglLahir: string; jenisKelamin: string };
 
@@ -101,8 +102,11 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
             + Tambah Anak
           </button>
         </div>
-        {anak.map((a, i) => (
-          <div key={i} className="grid md:grid-cols-5 gap-3 border border-slate-100 rounded-2xl p-3">
+        {anak.map((a, i) => {
+          const infoKelompok = a.tglLahir ? tentukanKelompokDariTglLahir(a.tglLahir) : null;
+          return (
+          <div key={i} className="space-y-2 border border-slate-100 rounded-2xl p-3">
+          <div className="grid md:grid-cols-5 gap-3">
             <label className="text-xs space-y-1 md:col-span-2">
               <span className="font-semibold text-slate-600">Nama anak *</span>
               <input
@@ -113,14 +117,15 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
               />
             </label>
             <label className="text-xs space-y-1">
-              <span className="font-semibold text-slate-600">NIK *</span>
+              <span className="font-semibold text-slate-600">NIK (16 digit) *</span>
               <input
                 required
+                maxLength={16}
                 inputMode="numeric"
                 pattern="\d{16}"
-                title="16 digit angka"
+                title="Tepat 16 digit angka"
                 value={a.nik}
-                onChange={(e) => ubahAnak(i, { nik: e.target.value })}
+                onChange={(e) => ubahAnak(i, { nik: e.target.value.replace(/\D/g, '').slice(0, 16) })}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs"
                 placeholder="16 digit"
               />
@@ -153,12 +158,21 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
                   onClick={() => setAnak((p) => p.filter((_, idx) => idx !== i))}
                   className="px-2 py-2 rounded-lg bg-rose-50 text-rose-600 text-[11px] font-bold cursor-pointer"
                 >
-                  ✕
+                  Hapus
                 </button>
               )}
             </div>
           </div>
-        ))}
+          {a.tglLahir && (
+            <div className={`text-[11px] px-3 py-1.5 rounded-xl font-semibold ${infoKelompok ? 'bg-teal-50 text-[#095c51]' : 'bg-amber-50 text-amber-800'}`}>
+              {infoKelompok
+                ? `Kelompok Otomatis: ${infoKelompok.labelLengkap} (Usia ${infoKelompok.usia} tahun)`
+                : 'Usia di luar rentang standar KB/TK (3-6 tahun)'}
+            </div>
+          )}
+          </div>
+          );
+        })}
       </div>
 
       <button

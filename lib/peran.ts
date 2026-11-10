@@ -2,8 +2,8 @@
 // Modul netral (tanpa 'use client') supaya bisa dipakai server component
 // maupun client component — export dari file 'use client' menjadi client
 // reference dan tidak terbaca sebagai objek biasa di server.
-export type SlugPeran = 'orang-tua' | 'guru' | 'bendahara' | 'kepala-sekolah';
-export type KodePeran = 'ORANG_TUA' | 'GURU' | 'BENDAHARA' | 'KEPALA_SEKOLAH';
+export type SlugPeran = 'orang-tua' | 'guru' | 'bendahara' | 'kepala-sekolah' | 'super-admin';
+export type KodePeran = 'ORANG_TUA' | 'GURU' | 'BENDAHARA' | 'KEPALA_SEKOLAH' | 'SUPER_ADMIN';
 
 export interface InfoPeran {
   judul: string;
@@ -18,6 +18,7 @@ export const INFO_PERAN: Record<SlugPeran, InfoPeran> = {
   guru: { judul: 'Guru Kelas', slug: 'guru', kode: 'GURU', email: 'guru@siaptk.sch.id', warna: 'bg-emerald-700' },
   bendahara: { judul: 'Bendahara Sekolah', slug: 'bendahara', kode: 'BENDAHARA', email: 'bendahara@siaptk.sch.id', warna: 'bg-amber-700' },
   'kepala-sekolah': { judul: 'Kepala Sekolah', slug: 'kepala-sekolah', kode: 'KEPALA_SEKOLAH', email: 'kepsek@siaptk.sch.id', warna: 'bg-indigo-700' },
+  'super-admin': { judul: 'Super Admin', slug: 'super-admin', kode: 'SUPER_ADMIN', email: 'superadmin@siaptk.sch.id', warna: 'bg-slate-800' },
 };
 
 export const SLUGS_PERAN = Object.keys(INFO_PERAN) as SlugPeran[];

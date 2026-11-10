@@ -5,6 +5,8 @@ import path from 'path';
 import { mkdirSync } from 'fs';
 import { sesiSekarang } from '@/lib/sesi';
 import { hashSandi } from '@/lib/sandi';
+import { otomatisKelompokAnak } from '@/lib/kelompok';
+import { buatTagihanPendaftaran } from '@/lib/tagihan';
 
 const TIPE_BERKAS = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const MAKS_BERKAS = 5 * 1024 * 1024;
@@ -49,11 +51,16 @@ export async function POST(request: Request) {
                     );
                 }
 
+                if (!(fileKK instanceof File) || fileKK.size === 0 || !(fileKTP instanceof File) || fileKTP.size === 0) {
+                    return NextResponse.json(
+                        { success: false, error: 'Berkas Kartu Keluarga (KK) dan KTP Orang Tua wajib diunggah.' },
+                        { status: 400 }
+                    );
+                }
+
                 for (const f of [fileKK, fileKTP]) {
-                    if (f && f.size > 0) {
-                        const salah = berkasSah(f);
-                        if (salah) return NextResponse.json({ success: false, error: salah }, { status: 400 });
-                    }
+                    const salah = berkasSah(f);
+                    if (salah) return NextResponse.json({ success: false, error: salah }, { status: 400 });
                 }
 
                 const existingUser = await prisma.keluarga.findUnique({
@@ -88,6 +95,8 @@ export async function POST(request: Request) {
                         email,
                         kataSandi: hashSandi(kataSandi),
                         alamat: `Pekerjaan Ayah: ${pekerjaanAyah || '-'}, Pekerjaan Ibu: ${pekerjaanIbu || '-'}`,
+                        fileKK: kkFilename,
+                        fileKTP: ktpFilename,
                         berkasKeluarga: {
                             create: [
                                 ...(kkFilename ? [{ jenis: 'KK' as const, file: kkFilename }] : []),
@@ -188,6 +197,9 @@ export async function POST(request: Request) {
                 await prisma.berkasAnak.create({
                     data: { idAnak: newAnak.idAnak, akta: aktaFilename, foto: fotoFilename, kia: kiaFilename },
                 });
+
+                await otomatisKelompokAnak(prisma, newAnak.idAnak, newAnak.tglLahir);
+                await buatTagihanPendaftaran(prisma, newAnak.idAnak);
 
                 return NextResponse.json({ success: true, data: newAnak, message: 'Anak baru berhasil didaftarkan dengan berkas!' });
             }

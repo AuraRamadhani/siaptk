@@ -21,7 +21,12 @@ export async function GET() {
     const laporan = await prisma.laporanMingguan.findMany({
       orderBy: { tema: { mingguKe: 'asc' } },
       include: {
-        anak: { include: { keluarga: { select: { namaAyah: true, namaIbu: true } } } },
+        anak: {
+          include: {
+            keluarga: { select: { namaAyah: true, namaIbu: true } },
+            riwayatKelompok: { include: { kelompok: true } },
+          },
+        },
         tema: true,
       },
     });

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { cekSandi } from '@/lib/sandi';
 import { buatToken, NAMA_KUKI, opsiKuki, type Peran } from '@/lib/sesi';
 
-const PERAN_VALID: Peran[] = ['ORANG_TUA', 'GURU', 'BENDAHARA', 'KEPALA_SEKOLAH'];
+const PERAN_VALID: Peran[] = ['ORANG_TUA', 'GURU', 'BENDAHARA', 'KEPALA_SEKOLAH', 'SUPER_ADMIN'];
 
 export async function POST(request: Request) {
   try {

@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { StatusTagihan } from "@/app/generated/prisma/client";
+import type { StatusTagihan, MetodePembayaran } from "@/app/generated/prisma/client";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { sesiSekarang } from "@/lib/sesi";
+import { writeFile } from "fs/promises";
+import path from "path";
+import { mkdirSync } from "fs";
 
 const PETUGAS = new Set(["BENDAHARA", "KEPALA_SEKOLAH"]);
+const TIPE_BERKAS = new Set(["application/pdf", "image/jpeg", "image/png"]);
+const MAKS_BERKAS = 5 * 1024 * 1024;
+const namaAman = (nama: string) => nama.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80);
 
 export async function POST(
   request: Request,
@@ -17,14 +23,42 @@ export async function POST(
     }
 
     const { idTagihan } = await params;
-    const body = await request.json();
-    const { metode, buktiTransfer } = body;
+    const contentType = request.headers.get("content-type") || "";
+
+    let metode = "";
+    let buktiTransfer = "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const fd = await request.formData();
+      metode = String(fd.get("metode") || "TRANSFER");
+      const file = fd.get("buktiTransfer");
+      if (file instanceof File && file.size > 0) {
+        if (file.size > MAKS_BERKAS) {
+          return NextResponse.json({ success: false, error: "Ukuran file maksimal 5 MB." }, { status: 400 });
+        }
+        if (!TIPE_BERKAS.has(file.type)) {
+          return NextResponse.json({ success: false, error: "Format file harus JPG, PNG, atau PDF." }, { status: 400 });
+        }
+        const uploadDir = path.join(process.cwd(), "public/uploads");
+        mkdirSync(uploadDir, { recursive: true });
+        const namaFile = `bukti_${Date.now()}_${namaAman(file.name)}`;
+        await writeFile(path.join(uploadDir, namaFile), Buffer.from(await file.arrayBuffer()));
+        buktiTransfer = namaFile;
+      } else if (typeof fd.get("buktiTransfer") === "string") {
+        buktiTransfer = String(fd.get("buktiTransfer"));
+      }
+    } else {
+      const body = await request.json();
+      metode = body.metode;
+      buktiTransfer = body.buktiTransfer;
+    }
 
     if (!["TRANSFER", "TUNAI", "TABUNGAN"].includes(metode)) {
       return NextResponse.json({ success: false, error: "Metode tidak valid" }, { status: 400 });
     }
+    const metodeSah = metode as MetodePembayaran;
     // TUNAI & TABUNGAN langsung melunasi tagihan: hanya petugas.
-    if (metode !== "TRANSFER" && !PETUGAS.has(sesi.peran)) {
+    if (metodeSah !== "TRANSFER" && !PETUGAS.has(sesi.peran)) {
       return NextResponse.json({ success: false, error: "Metode ini hanya untuk bendahara." }, { status: 403 });
     }
 
@@ -49,16 +83,16 @@ export async function POST(
     let newStatus: string;
     const pembayaranData: Prisma.PembayaranUncheckedCreateInput = {
       idTagihan,
-      metode,
+      metode: metodeSah,
     };
 
-    if (metode === "TRANSFER") {
+    if (metodeSah === "TRANSFER") {
       if (!buktiTransfer) {
         return NextResponse.json({ success: false, error: "buktiTransfer wajib untuk metode TRANSFER" }, { status: 400 });
       }
       newStatus = "MENUNGGU_VERIFIKASI";
       pembayaranData.buktiTransfer = buktiTransfer;
-    } else if (metode === "TUNAI") {
+    } else if (metodeSah === "TUNAI") {
       newStatus = "LUNAS";
       pembayaranData.diverifikasiOleh = sesi.nama;
     } else {
@@ -75,7 +109,7 @@ export async function POST(
       // Potong saldo + catat transaksi, atomik bersama pembayaran & tagihan.
       const [pembayaran] = await prisma.$transaction([
         prisma.pembayaran.create({
-          data: { idTagihan, metode, diverifikasiOleh: sesi.nama },
+          data: { idTagihan, metode: metodeSah, diverifikasiOleh: sesi.nama },
         }),
         prisma.tagihan.update({ where: { idTagihan }, data: { status: "LUNAS" } }),
         prisma.rekeningTabungan.update({

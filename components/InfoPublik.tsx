@@ -112,12 +112,9 @@ export default function InfoPublik({
 
                 {/* Cek Kelompok Anak */}
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-4">
-                    <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-[#095c51] text-white flex items-center justify-center"><Sparkles className="w-4 h-4" /></div>
-                        <div>
-                            <h3 className="text-sm font-bold text-slate-900">Cek kelompok anak Anda</h3>
-                            <p className="text-xs text-slate-500">Masukkan tanggal lahir anak untuk mengecek kelompoknya secara otomatis berdasarkan aturan sistem.</p>
-                        </div>
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-900">Cek kelompok anak Anda</h3>
+                        <p className="text-xs text-slate-500">Masukkan tanggal lahir anak untuk mengecek kelompoknya secara otomatis berdasarkan aturan sistem.</p>
                     </div>
                     <div className="max-w-md flex flex-col sm:flex-row gap-3 pt-2">
                         <input

@@ -5,6 +5,8 @@ import { SLUGS_PERAN } from '@/lib/peran';
 import { sesiSekarang, SLUG } from '@/lib/sesi';
 /* eslint-disable @typescript-eslint/no-explicit-any -- bentuk respons API belum punya tipe bersama; ditandai untuk dirapikan bertahap. */
 
+export const instant = false;
+
 /** Baca sesi di dalam Suspense: connection() jadi dynamic hole, bukan blocker prerender. */
 async function SudahMasuk({ peran }: { peran: string }) {
   const sesi = await sesiSekarang();

@@ -28,6 +28,7 @@ enum PeranStaf {
   GURU
   BENDAHARA
   KEPALA_SEKOLAH
+  SUPER_ADMIN
 }
 
 model AkunStaf {

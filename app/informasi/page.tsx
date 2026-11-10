@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import InfoPublik from '@/components/InfoPublik';
+import { tentukanKelompokDariTglLahir } from '@/lib/usia';
 
 // Halaman informasi pendaftaran publik — dipertahankan dari prototipe.
 export default function HalamanInformasi() {
@@ -16,23 +17,11 @@ export default function HalamanInformasi() {
       setCalculatedGroup(null);
       return;
     }
-    const birthDate = new Date(dateStr);
-    const cutoffDate = new Date('2026-07-01');
-
-    let age = cutoffDate.getFullYear() - birthDate.getFullYear();
-    const m = cutoffDate.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && cutoffDate.getDate() < birthDate.getDate())) {
-      age--;
-    }
-
-    if (age >= 5 && age <= 6) {
-      setCalculatedGroup('Kelompok B (TK B) - Usia 5-6 Tahun');
-    } else if (age >= 4 && age < 5) {
-      setCalculatedGroup('Kelompok A (TK A) - Usia 4-5 Tahun');
-    } else if (age >= 3 && age < 4) {
-      setCalculatedGroup('Kelompok Bermain (KB) - Usia 3-4 Tahun');
+    const info = tentukanKelompokDariTglLahir(dateStr);
+    if (info) {
+      setCalculatedGroup(info.labelLengkap);
     } else {
-      setCalculatedGroup('Usia di luar rentang standar TK (Hubungi Sekretariat)');
+      setCalculatedGroup('Usia di luar rentang standar KB/TK (3-6 tahun) — Hubungi Sekretariat');
     }
   };
 

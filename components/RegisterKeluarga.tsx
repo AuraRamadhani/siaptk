@@ -5,6 +5,7 @@
 import React, { useState, useRef } from 'react';
 import { ArrowLeft, Sparkles, Eye, EyeOff, Folder, Upload } from 'lucide-react';
 import logoSIAPTK from '@/app/assets/siap-tk-logo.png';
+import { useToast } from '@/components/Toast';
 
 interface RegisterKeluargaProps {
     onBackToLogin: () => void;
@@ -15,6 +16,7 @@ export default function RegisterKeluarga({
     onBackToLogin,
     onSuccessRegister,
 }: RegisterKeluargaProps) {
+    const { toast } = useToast();
     const [formData, setFormData] = useState({
         namaAyah: '',
         namaIbu: '',
@@ -41,12 +43,22 @@ export default function RegisterKeluarga({
         e.preventDefault();
 
         if (!formData.namaAyah || !formData.namaIbu || !formData.email || !formData.password || !formData.noWhatsapp) {
-            alert("Mohon lengkapi data wajib yang bertanda bintang (*)");
+            toast.warning("Mohon lengkapi data wajib yang bertanda bintang (*)");
+            return;
+        }
+
+        if (formData.password.length < 6) {
+            toast.warning("Kata sandi minimal 6 karakter!");
             return;
         }
 
         if (formData.password !== formData.confirmPassword) {
-            alert("Kata sandi dan konfirmasi kata sandi tidak cocok!");
+            toast.error("Kata sandi dan konfirmasi kata sandi tidak cocok!");
+            return;
+        }
+
+        if (!fileKK || !fileKTP) {
+            toast.warning("Semua berkas keluarga wajib diisi: Kartu Keluarga (KK) dan KTP Orang Tua / Wali!");
             return;
         }
 
@@ -97,14 +109,14 @@ export default function RegisterKeluarga({
             }
 
             if (result.success) {
-                alert("Akun keluarga berhasil didaftarkan dan disimpan ke database! Silakan masuk.");
+                toast.success("Akun keluarga berhasil didaftarkan dan disimpan ke database! Silakan masuk.");
                 onSuccessRegister();
             } else {
-                alert(result.error || "Gagal mendaftarkan akun ke database.");
+                toast.error(result.error || "Gagal mendaftarkan akun ke database.");
             }
         } catch (error: any) {
             console.error("Registrasi Error:", error);
-            alert("Terjadi kesalahan: " + (error.message || "Gagal terhubung ke server database."));
+            toast.error("Terjadi kesalahan: " + (error.message || "Gagal terhubung ke server database."));
         } finally {
             setLoading(false);
         }
@@ -307,9 +319,9 @@ export default function RegisterKeluarga({
                                     className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-[#095c51] transition bg-slate-50/50 cursor-pointer"
                                 >
                                     <div className="text-[#095c51] flex justify-center mb-1"><Upload className="w-6 h-6" /></div>
-                                    <div className="text-xs font-bold text-slate-800">Kartu Keluarga (KK)</div>
+                                    <div className="text-xs font-bold text-slate-800">Kartu Keluarga (KK) <span className="text-rose-500">*</span></div>
                                     <div className="text-[11px] text-[#095c51] mt-1 font-semibold truncate px-2">
-                                        {fileKK ? `Terpilih: ${fileKK.name}` : "Klik untuk memilih file KK"}
+                                        {fileKK ? `Terpilih: ${fileKK.name}` : "Klik untuk memilih file KK (Wajib)"}
                                     </div>
                                 </div>
                             </div>
@@ -331,9 +343,9 @@ export default function RegisterKeluarga({
                                     className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-[#095c51] transition bg-slate-50/50 cursor-pointer"
                                 >
                                     <div className="text-[#095c51] flex justify-center mb-1"><Upload className="w-6 h-6" /></div>
-                                    <div className="text-xs font-bold text-slate-800">KTP Orang Tua / Wali</div>
+                                    <div className="text-xs font-bold text-slate-800">KTP Orang Tua / Wali <span className="text-rose-500">*</span></div>
                                     <div className="text-[11px] text-[#095c51] mt-1 font-semibold truncate px-2">
-                                        {fileKTP ? `Terpilih: ${fileKTP.name}` : "Klik untuk memilih file KTP"}
+                                        {fileKTP ? `Terpilih: ${fileKTP.name}` : "Klik untuk memilih file KTP (Wajib)"}
                                     </div>
                                 </div>
                             </div>

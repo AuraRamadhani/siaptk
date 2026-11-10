@@ -28,8 +28,9 @@ if (!tahun) {
 }
 const idTahun = tahun.id_tahun_ajaran;
 
-// ── Kelompok (TK A 4-5 th, TK B 5-6 th) ───────────────────────────────
+// ── Kelompok (KB 3-4 th, TK A 4-5 th, TK B 5-6 th) ────────────────────
 const kelompokTarget = [
+  { nama: 'Kelompok Bermain (KB)', usiaMin: 3, usiaMaks: 4 },
   { nama: 'TK A', usiaMin: 4, usiaMaks: 5 },
   { nama: 'TK B', usiaMin: 5, usiaMaks: 6 },
 ];

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
-import { hitungUsia, USIA_MIN, USIA_MAX } from '@/lib/usia';
+import { hitungUsia, TANGGAL_ACUAN_PPDB, tentukanKelompokDariTglLahir, USIA_MIN, USIA_MAX } from '@/lib/usia';
 
 // GET /api/pengelompokan -> daftar kelompok + isi siswa tahun ajaran aktif
 export async function GET() {
@@ -96,7 +96,7 @@ export async function POST() {
       return NextResponse.json({ success: false, error: 'Belum ada tahun ajaran aktif.' }, { status: 404 });
     }
 
-    const kelompok = await prisma.kelompok.findMany({ orderBy: { usiaMin: 'asc' } });
+    const kelompok = await prisma.kelompok.findMany({ orderBy: { usiaMin: 'desc' } });
     if (kelompok.length === 0) {
       return NextResponse.json({ success: false, error: 'Belum ada data kelompok.' }, { status: 404 });
     }
@@ -112,7 +112,8 @@ export async function POST() {
     const gagal: { nama: string; alasan: string }[] = [];
 
     for (const anak of siswa) {
-      const usia = hitungUsia(new Date(anak.tglLahir));
+      const usia = hitungUsia(new Date(anak.tglLahir), TANGGAL_ACUAN_PPDB);
+      const infoUsia = tentukanKelompokDariTglLahir(anak.tglLahir, TANGGAL_ACUAN_PPDB);
 
       if (usia < USIA_MIN) {
         gagal.push({ nama: anak.nama, alasan: `Usia ${usia} tahun, minimal ${USIA_MIN} tahun.` });
@@ -123,7 +124,10 @@ export async function POST() {
         continue;
       }
 
-      const cocok = kelompok.find((k) => usia >= k.usiaMin && usia <= k.usiaMaks);
+      const cocok =
+        (infoUsia &&
+          kelompok.find((k) => k.usiaMin === infoUsia.usiaMin && k.usiaMaks === infoUsia.usiaMaks)) ||
+        kelompok.find((k) => usia >= k.usiaMin && usia <= k.usiaMaks);
       if (!cocok) {
         gagal.push({ nama: anak.nama, alasan: `Tidak ada kelompok untuk usia ${usia} tahun.` });
         continue;

@@ -6,6 +6,7 @@ import LoginRegister from '@/components/LoginRegister';
 import InfoPublik from '@/components/InfoPublik';
 import RegisterKeluarga from '@/components/RegisterKeluarga';
 import { infoPeran } from '@/lib/peran';
+import { tentukanKelompokDariTglLahir } from '@/lib/usia';
 
 export default function FormMasuk({ peran }: { peran: string }) {
   const router = useRouter();
@@ -61,23 +62,11 @@ export default function FormMasuk({ peran }: { peran: string }) {
       setCalculatedGroup(null);
       return;
     }
-    const birthDate = new Date(dateStr);
-    const cutoffDate = new Date('2026-07-01');
-
-    let age = cutoffDate.getFullYear() - birthDate.getFullYear();
-    const m = cutoffDate.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && cutoffDate.getDate() < birthDate.getDate())) {
-      age--;
-    }
-
-    if (age >= 5 && age <= 6) {
-      setCalculatedGroup('Kelompok B (TK B) - Usia 5-6 Tahun');
-    } else if (age >= 4 && age < 5) {
-      setCalculatedGroup('Kelompok A (TK A) - Usia 4-5 Tahun');
-    } else if (age >= 3 && age < 4) {
-      setCalculatedGroup('Kelompok Bermain (KB) - Usia 3-4 Tahun');
+    const infoKelompok = tentukanKelompokDariTglLahir(dateStr);
+    if (infoKelompok) {
+      setCalculatedGroup(infoKelompok.labelLengkap);
     } else {
-      setCalculatedGroup('Usia di luar rentang standar TK (Hubungi Sekretariat)');
+      setCalculatedGroup('Usia di luar rentang standar KB/TK (3-6 tahun) — Hubungi Sekretariat');
     }
   };
 
@@ -109,25 +98,13 @@ export default function FormMasuk({ peran }: { peran: string }) {
     );
   }
 
-  const tombolAksiKedua = () => {
-    if (adalahOrangTua) {
-      router.push('/masuk/guru');
-    } else {
-      router.push('/masuk/orang-tua');
-    }
-  };
-
-  const labelAksiKedua = adalahOrangTua
-    ? '👤 Masuk Portal Guru'
-    : '🏠 Portal Orang Tua';
-
-  // Tautan cepat ke portal peran lain (pengganti dropdown "Lihat sebagai" prototipe).
-  const tautanPeran = [
-    { label: 'Orang Tua', href: '/masuk/orang-tua' },
-    { label: 'Guru', href: '/masuk/guru' },
-    { label: 'Bendahara', href: '/masuk/bendahara' },
-    { label: 'Kepala Sekolah', href: '/masuk/kepala-sekolah' },
-  ].filter((t) => !t.href.endsWith(`/${peran}`));
+  const daftarPortal = [
+    { label: 'Orang Tua', slug: 'orang-tua' },
+    { label: 'Guru', slug: 'guru' },
+    { label: 'Bendahara', slug: 'bendahara' },
+    { label: 'Kepala Sekolah', slug: 'kepala-sekolah' },
+    { label: 'Super Admin', slug: 'super-admin' },
+  ];
 
   return (
     <LoginRegister
@@ -151,13 +128,14 @@ export default function FormMasuk({ peran }: { peran: string }) {
         setViewMode('register_full');
       }}
       onGoToPublicInfo={() => setViewMode('public_info')}
-      onLoginTeacher={tombolAksiKedua}
+      onPilihPortal={(slug) => router.push(`/masuk/${slug}`)}
+      peranSlug={peran}
       peranJudul={adalahOrangTua ? undefined : info?.judul}
+      peranKode={kodePeran}
       galat={galat}
       memuat={memuat}
       tanpaDaftar={!adalahOrangTua}
-      labelAksiKedua={labelAksiKedua}
-      tautanPeran={tautanPeran}
+      daftarPortal={daftarPortal}
     />
   );
 }

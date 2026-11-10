@@ -82,7 +82,7 @@ export default function PanelKelompok() {
           </button>
         </div>
         <p className="text-[11px] text-slate-500">
-          Siswa AKTIF yang belum punya riwayat kelompok tahun ini akan dimasukkan otomatis sesuai usia (4–6 tahun).
+          Siswa AKTIF yang belum punya riwayat kelompok tahun ini akan dimasukkan otomatis sesuai usia: KB (3–4 tahun), TK A (4–5 tahun), dan TK B (5–6 tahun).
         </p>
       </div>
 

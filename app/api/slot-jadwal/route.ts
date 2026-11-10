@@ -17,13 +17,45 @@ export async function GET(request: Request) {
       where.tanggal = { gte: hariIni };
     }
 
-    const data = await prisma.slotJadwal.findMany({
+    let data = await prisma.slotJadwal.findMany({
       where,
-      orderBy: { tanggal: 'asc' },
+      orderBy: [{ tanggal: 'asc' }, { jam: 'asc' }],
       include: {
         _count: { select: { bookingKunjungan: true } },
       },
     });
+
+    // Jika belum ada slot mendatang sama sekali, sediakan slot kedatangan default (hari kerja berikutnya)
+    if (future && data.length === 0) {
+      const slotsToCreate: { tanggal: Date; jam: Date; kuota: number }[] = [];
+      const jamList = ['08:30', '10:00', '13:00'];
+      const cursor = new Date();
+      let addedDays = 0;
+      while (addedDays < 3) {
+        cursor.setDate(cursor.getDate() + 1);
+        const day = cursor.getDay();
+        if (day === 0 || day === 6) continue; // Lewati Minggu & Sabtu
+        const tglStr = cursor.toISOString().split('T')[0];
+        for (const j of jamList) {
+          slotsToCreate.push({
+            tanggal: new Date(tglStr + 'T00:00:00'),
+            jam: new Date(`2000-01-01T${j}:00Z`),
+            kuota: 5,
+          });
+        }
+        addedDays++;
+      }
+      if (slotsToCreate.length > 0) {
+        await prisma.slotJadwal.createMany({ data: slotsToCreate });
+        data = await prisma.slotJadwal.findMany({
+          where,
+          orderBy: [{ tanggal: 'asc' }, { jam: 'asc' }],
+          include: {
+            _count: { select: { bookingKunjungan: true } },
+          },
+        });
+      }
+    }
 
     // Hitung sisa kuota per slot
     const slotDenganKuota = await Promise.all(
@@ -81,7 +113,7 @@ export async function POST(request: Request) {
     const slot = await prisma.slotJadwal.create({
       data: {
         tanggal: new Date(tanggal + 'T00:00:00'),
-        jam: new Date(`2000-01-01T${jam}:00`),
+        jam: new Date(`2000-01-01T${jam}:00Z`),
         kuota: Number(kuota),
       },
     });
@@ -127,7 +159,7 @@ export async function PATCH(request: Request) {
       where: { idSlot },
       data: {
         tanggal: tanggal ? new Date(tanggal + 'T00:00:00') : undefined,
-        jam: jam ? new Date(`2000-01-01T${jam}:00`) : undefined,
+        jam: jam ? new Date(`2000-01-01T${jam}:00Z`) : undefined,
         kuota: kuota ? Number(kuota) : undefined,
       },
     });

@@ -5,7 +5,7 @@ export const NAMA_KUKI = 'siaptk_sesi';
 /** Umur sesi: 8 jam. */
 export const UMUR_MS = 1000 * 60 * 60 * 8;
 
-export type Peran = 'ORANG_TUA' | 'GURU' | 'BENDAHARA' | 'KEPALA_SEKOLAH';
+export type Peran = 'ORANG_TUA' | 'GURU' | 'BENDAHARA' | 'KEPALA_SEKOLAH' | 'SUPER_ADMIN';
 export type Sesi = { id: string; nama: string; peran: Peran; exp: number };
 
 /** Peran -> slug URL. */
@@ -14,6 +14,7 @@ export const SLUG: Record<Peran, string> = {
   GURU: 'guru',
   BENDAHARA: 'bendahara',
   KEPALA_SEKOLAH: 'kepala-sekolah',
+  SUPER_ADMIN: 'super-admin',
 };
 
 const RAHASIA = () => {

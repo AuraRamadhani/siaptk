@@ -7,6 +7,7 @@ const DILINDUNGI: { path: string; peran: Peran }[] = [
   { path: '/guru', peran: 'GURU' },
   { path: '/bendahara', peran: 'BENDAHARA' },
   { path: '/kepala-sekolah', peran: 'KEPALA_SEKOLAH' },
+  { path: '/super-admin', peran: 'SUPER_ADMIN' },
 ];
 
 export function proxy(request: NextRequest) {
@@ -26,5 +27,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/orang-tua/:path*', '/guru/:path*', '/bendahara/:path*', '/kepala-sekolah/:path*'],
+  matcher: ['/orang-tua/:path*', '/guru/:path*', '/bendahara/:path*', '/kepala-sekolah/:path*', '/super-admin/:path*'],
 };

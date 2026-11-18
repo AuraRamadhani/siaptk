@@ -5,7 +5,7 @@ import path from 'path';
 import { mkdirSync } from 'fs';
 import { sesiSekarang } from '@/lib/sesi';
 import { otomatisKelompokAnak } from '@/lib/kelompok';
-import { buatTagihanPendaftaran } from '@/lib/tagihan';
+import { buatTagihanPendaftaran, pastikanTagihanSppBulanan } from '@/lib/tagihan';
 
 /** Validasi berkas unggahan: hanya PDF/JPG/PNG, maksimum 5 MB. */
 const TIPE_BERKAS = new Set(['application/pdf', 'image/jpeg', 'image/png']);
@@ -79,11 +79,20 @@ export async function GET(request: Request) {
             );
         }
 
-        // Pastikan setiap calon siswa (PENDAFTAR) yang belum punya tagihan PENDAFTARAN langsung dibuatkan
+        // Tagihan pendaftaran HANYA diterbitkan jika berkas calon siswa telah disetujui / diverifikasi oleh Kepala Sekolah.
+        // Siswa aktif memiliki tagihan SPP bulanan bulan berjalan.
         let perluMuatUlang = false;
+        const bulanSekarang = new Date().getMonth() + 1;
         for (const a of keluarga.anak) {
-            if (a.status === 'PENDAFTAR' && !a.tagihan.some((t) => t.jenis === 'PENDAFTARAN')) {
+            const berkasObj = Array.isArray(a.berkasAnak) ? a.berkasAnak[0] : a.berkasAnak;
+            const berkasDiverifikasi = berkasObj?.statusVerifikasi === 'DIVERIFIKASI';
+
+            if (a.status === 'PENDAFTAR' && berkasDiverifikasi && !a.tagihan.some((t) => t.jenis === 'PENDAFTARAN')) {
                 await buatTagihanPendaftaran(prisma, a.idAnak);
+                perluMuatUlang = true;
+            }
+            if (a.status === 'AKTIF' && !a.tagihan.some((t) => t.jenis === 'SPP' && t.bulan === bulanSekarang)) {
+                await pastikanTagihanSppBulanan(prisma, a.idAnak, bulanSekarang);
                 perluMuatUlang = true;
             }
         }

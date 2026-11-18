@@ -4,6 +4,33 @@ import { sesiSekarang } from "@/lib/sesi";
 
 const PETUGAS = new Set(["BENDAHARA", "KEPALA_SEKOLAH"]);
 
+// Helper: kirim notifikasi pembayaran
+async function kirimNotifikasiPembayaran(
+  tx: any,
+  idKeluarga: string,
+  namaAnak: string,
+  jenisTagihan: string,
+  nominal: number,
+  status: 'LUNAS' | 'DITOLAK',
+  catatan?: string
+) {
+  const tipe = status === 'LUNAS' ? 'PEMBAYARAN_DIVERIFIKASI' : 'PEMBAYARAN_DITOLAK';
+  const judul = status === 'LUNAS' ? 'Pembayaran Diverifikasi (Lunas)' : 'Pembayaran Ditolak';
+  const pesan = status === 'LUNAS'
+    ? `Pembayaran ${jenisTagihan} sebesar Rp${nominal.toLocaleString('id-ID')} untuk ${namaAnak} telah diverifikasi. Status tagihan: LUNAS.`
+    : `Pembayaran ${jenisTagihan} sebesar Rp${nominal.toLocaleString('id-ID')} untuk ${namaAnak} ditolak.${catatan ? ` Alasan: ${catatan}` : ''} Silakan unggah ulang bukti yang benar.`;
+
+  await tx.notifikasi.create({
+    data: {
+      idKeluarga,
+      tipe,
+      judul,
+      pesan,
+      dataReferensi: JSON.stringify({ jenis: 'pembayaran', tagihan: jenisTagihan, nominal, status }),
+    },
+  });
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ idPembayaran: string }> }
@@ -16,15 +43,18 @@ export async function PATCH(
 
     const { idPembayaran } = await params;
     const body = await request.json();
-    const { aksi } = body;
+    const { aksi, catatanVerifikasi } = body;
 
     if (!["verifikasi", "tolak"].includes(aksi)) {
       return NextResponse.json({ success: false, error: "aksi harus 'verifikasi' atau 'tolak'" }, { status: 400 });
     }
+    if (aksi === "tolak" && !catatanVerifikasi?.trim()) {
+      return NextResponse.json({ success: false, error: "Catatan penolakan wajib diisi." }, { status: 400 });
+    }
 
     const pembayaran = await prisma.pembayaran.findUnique({
       where: { idPembayaran },
-      include: { tagihan: true },
+      include: { tagihan: { include: { anak: true } } },
     });
 
     if (!pembayaran) {
@@ -32,32 +62,57 @@ export async function PATCH(
     }
 
     const idTagihan = pembayaran.idTagihan;
+    const namaAnak = pembayaran.tagihan.anak?.nama || 'Anak';
+    const idKeluarga = pembayaran.tagihan.anak?.idKeluarga || '';
+    const jenisTagihan = pembayaran.tagihan.jenis === 'PENDAFTARAN' ? 'Biaya Pendaftaran' : `SPP Bulan ${pembayaran.tagihan.bulan || '-'}`;
+    const nominal = Number(pembayaran.tagihan.nominal) - Number(pembayaran.tagihan.diskon);
 
     if (aksi === "verifikasi") {
-      const [updatedPembayaran] = await prisma.$transaction([
-        prisma.pembayaran.update({
+      const [updatedPembayaran] = await prisma.$transaction(async (tx) => {
+        const pb = await tx.pembayaran.update({
           where: { idPembayaran },
-          data: { diverifikasiOleh: sesi.nama },
-        }),
-        prisma.tagihan.update({
+          data: { diverifikasiOleh: sesi.nama, catatanVerifikasi: catatanVerifikasi || null },
+        });
+        await tx.tagihan.update({
           where: { idTagihan },
           data: { status: "LUNAS" },
-        }),
-      ]);
+        });
+        // Update status anak menjadi AKTIF jika tagihan PENDAFTARAN lunas
+        if (pembayaran.tagihan.jenis === 'PENDAFTARAN') {
+          await tx.anak.update({
+            where: { idAnak: pembayaran.tagihan.idAnak },
+            data: { status: 'AKTIF' },
+          });
+          // Notifikasi anak diterima
+          await tx.notifikasi.create({
+            data: {
+              idKeluarga,
+              tipe: 'ANAK_DITERIMA',
+              judul: 'Anak Diterima Sebagai Siswa',
+              pesan: `Selamat! ${namaAnak} telah resmi diterima sebagai siswa TK Islam Nur Habib.`,
+              dataReferensi: JSON.stringify({ idAnak: pembayaran.tagihan.idAnak, status: 'AKTIF' }),
+            },
+          });
+        }
+        await kirimNotifikasiPembayaran(tx, idKeluarga, namaAnak, jenisTagihan, nominal, 'LUNAS');
+        return [pb];
+      });
       return NextResponse.json({ success: true, data: updatedPembayaran });
     } else {
       // tolak
-      const [updatedPembayaran] = await prisma.$transaction([
-        prisma.pembayaran.update({
+      const [updatedPembayaran] = await prisma.$transaction(async (tx) => {
+        const pb = await tx.pembayaran.update({
           where: { idPembayaran },
-          data: { buktiTransfer: null, diverifikasiOleh: null },
-        }),
-        prisma.tagihan.update({
+          data: { buktiTransfer: null, diverifikasiOleh: null, catatanVerifikasi: catatanVerifikasi },
+        });
+        await tx.tagihan.update({
           where: { idTagihan },
           data: { status: "BELUM_BAYAR" },
-        }),
-      ]);
-      return NextResponse.json({ success: true, data: updatedPembayaran });
+        });
+        await kirimNotifikasiPembayaran(tx, idKeluarga, namaAnak, jenisTagihan, nominal, 'DITOLAK', catatanVerifikasi);
+        return [pb];
+      });
+      return NextResponse.json({ success: true, data: updatedPembayaran, message: 'Pembayaran ditolak. Orang tua diminta mengunggah ulang bukti yang benar.' });
     }
   } catch (error) {
     console.error(error);

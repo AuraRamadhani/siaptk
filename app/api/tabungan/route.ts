@@ -10,6 +10,32 @@ const TIPE_BUKTI = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const MAKS_BUKTI = 5 * 1024 * 1024;
 const namaAman = (nama: string) => nama.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
 
+// Helper: kirim notifikasi ke orang tua
+async function kirimNotifikasiSetoran(
+  tx: any,
+  idKeluarga: string,
+  namaAnak: string,
+  nominal: number,
+  status: 'DIVERIFIKASI' | 'DITOLAK',
+  catatan?: string
+) {
+  const tipe = status === 'DIVERIFIKASI' ? 'SETORAN_DIVERIFIKASI' : 'SETORAN_DITOLAK';
+  const judul = status === 'DIVERIFIKASI' ? 'Setoran Tabungan Disetujui' : 'Setoran Tabungan Ditolak';
+  const pesan = status === 'DIVERIFIKASI'
+    ? `Setoran tabungan sebesar Rp${nominal.toLocaleString('id-ID')} untuk ${namaAnak} telah diverifikasi. Saldo tabungan bertambah.`
+    : `Setoran tabungan sebesar Rp${nominal.toLocaleString('id-ID')} untuk ${namaAnak} ditolak.${catatan ? ` Alasan: ${catatan}` : ''}`;
+
+  await tx.notifikasi.create({
+    data: {
+      idKeluarga,
+      tipe,
+      judul,
+      pesan,
+      dataReferensi: JSON.stringify({ jenis: 'setoran', nominal, status }),
+    },
+  });
+}
+
 // GET /api/tabungan?email=...            -> semua tabungan milik keluarga (portal orang tua)
 // GET /api/tabungan?status=MENUNGGU      -> antrean verifikasi (portal bendahara)
 // GET /api/tabungan?idAnak=...           -> satu rekening + riwayat
@@ -61,7 +87,6 @@ export async function GET(request: Request) {
       if (!rekening) {
         return NextResponse.json({ success: false, error: 'Rekening tidak ditemukan.' }, { status: 404 });
       }
-      // Orang tua hanya boleh melihat rekening anaknya sendiri.
       if (sesi.peran === 'ORANG_TUA' && rekening.anak.idKeluarga !== sesi.id) {
         return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
       }
@@ -86,14 +111,12 @@ export async function GET(request: Request) {
       if (!keluarga) {
         return NextResponse.json({ success: false, error: 'Keluarga tidak ditemukan.' }, { status: 404 });
       }
-      // Cegah baca data keluarga lain.
       if (keluarga.idKeluarga !== sesi.id) {
         return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
       }
       return NextResponse.json({ success: true, data: keluarga.anak });
     }
 
-    // ringkasan seluruh siswa (dipakai bendahara & kepala sekolah)
     if (sesi.peran !== 'BENDAHARA' && sesi.peran !== 'KEPALA_SEKOLAH') {
       return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
     }
@@ -109,6 +132,7 @@ export async function GET(request: Request) {
 }
 
 // POST /api/tabungan -> pengajuan / pencatatan transaksi baru
+// Support: SETOR (transfer/bukti, tunai/booking), TARIK (hanya bendahara), BAYAR_SPP
 export async function POST(request: Request) {
   try {
     const sesi = await sesiSekarang();
@@ -122,6 +146,7 @@ export async function POST(request: Request) {
     let keterangan: string | null = null;
     let idTagihan: string | null = null;
     let buktiFile: File | null = null;
+    let idBooking: string | null = null;
 
     if (contentType.includes('multipart/form-data')) {
       const fd = await request.formData();
@@ -131,6 +156,7 @@ export async function POST(request: Request) {
       metode = String(fd.get('metode') || 'TRANSFER');
       keterangan = fd.get('keterangan') ? String(fd.get('keterangan')) : null;
       idTagihan = fd.get('idTagihan') ? String(fd.get('idTagihan')) : null;
+      idBooking = fd.get('idBooking') ? String(fd.get('idBooking')) : null;
       const f = fd.get('bukti');
       if (f instanceof File && f.size > 0) buktiFile = f;
     } else {
@@ -141,6 +167,7 @@ export async function POST(request: Request) {
       metode = body.metode || 'TUNAI';
       keterangan = body.keterangan || null;
       idTagihan = body.idTagihan || null;
+      idBooking = body.idBooking || null;
     }
 
     const nilai = Number(nominal);
@@ -165,7 +192,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Data siswa tidak ditemukan.' }, { status: 404 });
     }
 
-    // Orang tua hanya boleh mengajukan transaksi untuk anaknya sendiri, dan tidak boleh menarik dana.
     const staf = sesi.peran === 'BENDAHARA' || sesi.peran === 'KEPALA_SEKOLAH';
     if (!staf) {
       if (anak.idKeluarga !== sesi.id) {
@@ -181,9 +207,7 @@ export async function POST(request: Request) {
       if (jenis !== 'SETOR') {
         return NextResponse.json({ success: false, error: 'Rekening tabungan siswa belum dibuat.' }, { status: 404 });
       }
-      rekening = await prisma.rekeningTabungan.create({
-        data: { idAnak, saldo: 0 },
-      });
+      rekening = await prisma.rekeningTabungan.create({ data: { idAnak, saldo: 0 } });
     }
 
     let buktiFilename: string | null = null;
@@ -196,6 +220,9 @@ export async function POST(request: Request) {
 
     // Setoran tunai yang dicatat langsung oleh bendahara sah tanpa antrean verifikasi.
     const langsungSah = jenis === 'SETOR' && metode === 'TUNAI' && staf;
+
+    // Jika SETOR TUNAI dengan booking oleh orang tua -> status MENUNGGU (butuh verifikasi bendahara saat datang)
+    const butuhVerifikasi = jenis === 'SETOR' && metode === 'TUNAI' && !staf;
 
     if (jenis !== 'SETOR') {
       if (Number(rekening.saldo) < nilai) {
@@ -216,25 +243,51 @@ export async function POST(request: Request) {
           keterangan: keterangan || null,
           bukti: buktiFilename,
           idTagihan: idTagihan || null,
-          // Dicatat dari sesi, bukan dari body: jejak audit tidak bisa dipalsukan klien.
           dicatatOleh: sesi.nama,
           status: langsungSah ? 'DIVERIFIKASI' : 'MENUNGGU',
         },
       });
+
+      // Jika ada booking terkait, update status booking
+      if (idBooking) {
+        await tx.bookingKunjungan.update({
+          where: { idBooking },
+          data: { status: 'DIKONFIRMASI', catatanBendahara: `Setoran tunai Rp${nilai.toLocaleString('id-ID')} tercatat` },
+        });
+      }
 
       if (langsungSah) {
         await tx.rekeningTabungan.update({
           where: { idTabungan: rekening.idTabungan },
           data: { saldo: { increment: nilai } },
         });
+        // Notifikasi ke orang tua
+        await kirimNotifikasiSetoran(tx, anak.idKeluarga, anak.nama, nilai, 'DIVERIFIKASI');
+      } else if (butuhVerifikasi) {
+        // Notifikasi ke bendahara (via notifikasi keluarga bendahara tidak ada, tapi bisa lewat sistem lain)
+        // Di sini kita kirim notifikasi ke orang tua bahwa pengajuan dikirim
+        await tx.notifikasi.create({
+          data: {
+            idKeluarga: anak.idKeluarga,
+            tipe: 'SETORAN_DITOLAK', // temporary, akan diupdate saat verifikasi
+            judul: 'Pengajuan Setoran Dikirim',
+            pesan: `Pengajuan setoran tabungan tunai sebesar Rp${nilai.toLocaleString('id-ID')} untuk ${anak.nama} telah dikirim. Silakan datang ke sekolah sesuai jadwal booking untuk verifikasi bendahara.`,
+            dataReferensi: JSON.stringify({ idTransaksi: trx.idTransaksi, jenis: 'setoran', status: 'MENUNGGU_VERIFIKASI' }),
+          },
+        });
       }
+
       return trx;
     });
 
     return NextResponse.json({
       success: true,
       data: hasil,
-      message: langsungSah ? 'Setoran tercatat dan saldo diperbarui.' : 'Pengajuan setoran dikirim ke Bendahara untuk verifikasi.',
+      message: langsungSah
+        ? 'Setoran tercatat dan saldo diperbarui.'
+        : butuhVerifikasi
+        ? 'Pengajuan setoran tunai dikirim. Silakan datang ke sekolah sesuai jadwal booking untuk verifikasi bendahara.'
+        : 'Pengajuan setoran dikirim ke Bendahara untuk verifikasi.',
     });
   } catch (error) {
     console.error('API Tabungan POST Error:', error);
@@ -252,29 +305,37 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { idTransaksi, aksi } = body;
+    const { idTransaksi, aksi, catatanPenolakan } = body;
 
     if (!idTransaksi || !['verifikasi', 'tolak'].includes(aksi)) {
       return NextResponse.json({ success: false, error: 'idTransaksi dan aksi (verifikasi/tolak) wajib diisi.' }, { status: 400 });
+    }
+    if (aksi === 'tolak' && !catatanPenolakan?.trim()) {
+      return NextResponse.json({ success: false, error: 'Catatan penolakan wajib diisi.' }, { status: 400 });
     }
 
     const hasil = await prisma.$transaction(async (tx) => {
       const trx = await tx.transaksiTabungan.findUnique({
         where: { idTransaksi },
-        include: { tabungan: true },
+        include: { tabungan: { include: { anak: true } } },
       });
       if (!trx) throw Object.assign(new Error('Transaksi tidak ditemukan.'), { http: 404 });
       if (trx.status !== 'MENUNGGU') throw Object.assign(new Error('Transaksi ini sudah diproses.'), { http: 409 });
 
+      const nominal = Number(trx.nominal);
+      const namaAnak = trx.tabungan.anak.nama;
+      const idKeluarga = trx.tabungan.anak.idKeluarga;
+
       if (aksi === 'tolak') {
-        return tx.transaksiTabungan.update({
+        const updated = await tx.transaksiTabungan.update({
           where: { idTransaksi },
-          data: { status: 'DITOLAK', dicatatOleh: sesi.nama },
+          data: { status: 'DITOLAK', dicatatOleh: sesi.nama, keterangan: catatanPenolakan },
         });
+        await kirimNotifikasiSetoran(tx, idKeluarga, namaAnak, nominal, 'DITOLAK', catatanPenolakan);
+        return updated;
       }
 
       const saldoSekarang = Number(trx.tabungan.saldo);
-      const nominal = Number(trx.nominal);
       const delta = trx.jenis === 'SETOR' ? nominal : -nominal;
       if (saldoSekarang + delta < 0) {
         throw Object.assign(new Error('Saldo tidak mencukupi untuk menyetujui pengajuan ini.'), { http: 422 });
@@ -297,10 +358,13 @@ export async function PATCH(request: Request) {
         });
       }
 
-      return tx.transaksiTabungan.update({
+      const updated = await tx.transaksiTabungan.update({
         where: { idTransaksi },
         data: { status: 'DIVERIFIKASI', dicatatOleh: sesi.nama },
       });
+
+      await kirimNotifikasiSetoran(tx, idKeluarga, namaAnak, nominal, 'DIVERIFIKASI');
+      return updated;
     });
 
     return NextResponse.json({ success: true, data: hasil, message: aksi === 'tolak' ? 'Pengajuan ditolak.' : 'Transaksi diverifikasi.' });

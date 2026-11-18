@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import type { StatusBooking } from '@/app/generated/prisma/client';
+import type { StatusBooking, JenisBooking } from '@/app/generated/prisma/client';
 import { sesiSekarang } from '@/lib/sesi';
 
 // GET /api/booking-kunjungan -> daftar booking
-// ORANG_TUA: hanya milik sendiri. KEPALA_SEKOLAH: semua.
+// ORANG_TUA: hanya milik sendiri. KEPALA_SEKOLAH/BENDAHARA: semua.
 export async function GET() {
   try {
     const sesi = await sesiSekarang();
@@ -12,14 +12,12 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
     }
 
-    const where =
-      sesi.peran === 'ORANG_TUA'
-        ? { idKeluarga: sesi.id }
-        : sesi.peran === 'KEPALA_SEKOLAH'
-          ? {}
-          : null;
-
-    if (!where) {
+    let where: Record<string, unknown> = {};
+    if (sesi.peran === 'ORANG_TUA') {
+      where = { idKeluarga: sesi.id };
+    } else if (sesi.peran === 'KEPALA_SEKOLAH' || sesi.peran === 'BENDAHARA') {
+      where = {};
+    } else {
       return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
     }
 
@@ -50,7 +48,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const { idSlot } = await request.json();
+    const body = await request.json();
+    const { idSlot, jenisBooking, catatanOrangTua } = body;
+
     if (!idSlot) {
       return NextResponse.json({ success: false, error: 'idSlot wajib diisi.' }, { status: 400 });
     }
@@ -61,7 +61,9 @@ export async function POST(request: Request) {
     }
 
     // Slot harus masa depan
-    if (new Date(slot.tanggal) < new Date(new Date().toISOString().split('T')[0])) {
+    const hariIni = new Date();
+    hariIni.setHours(0, 0, 0, 0);
+    if (new Date(slot.tanggal) < hariIni) {
       return NextResponse.json({ success: false, error: 'Slot sudah lewat.' }, { status: 422 });
     }
 
@@ -89,8 +91,26 @@ export async function POST(request: Request) {
     }
 
     const booking = await prisma.bookingKunjungan.create({
-      data: { idKeluarga: sesi.id, idSlot, status: 'MENUNGGU' },
+      data: {
+        idKeluarga: sesi.id,
+        idSlot,
+        jenisBooking: (jenisBooking as JenisBooking) || 'UMUM',
+        catatanOrangTua: catatanOrangTua || null,
+        status: 'MENUNGGU',
+      },
       include: { slot: true },
+    });
+
+    // Notifikasi ke bendahara/kepala sekolah (opsional, via sistem notifikasi global)
+    // Di sini kita kirim notifikasi ke orang tua sebagai konfirmasi
+    await prisma.notifikasi.create({
+      data: {
+        idKeluarga: sesi.id,
+        tipe: 'BOOKING_DIKONFIRMASI',
+        judul: 'Booking Kunjungan Berhasil',
+        pesan: `Booking kunjungan untuk ${booking.jenisBooking === 'BAYAR_SPP' ? 'Pembayaran SPP' : booking.jenisBooking === 'SETOR_TABUNGAN' ? 'Setoran Tabungan' : 'Kunjungan Umum'} pada ${new Date(slot.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })} pukul ${slot.jam.toISOString().slice(11, 16)} WIB telah dikirim. Menunggu konfirmasi.`,
+        dataReferensi: JSON.stringify({ idBooking: booking.idBooking, jenisBooking: booking.jenisBooking }),
+      },
     });
 
     return NextResponse.json({
@@ -104,7 +124,7 @@ export async function POST(request: Request) {
   }
 }
 
-// PATCH /api/booking-kunjungan -> konfirmasi/batalkan/selesai (KEPALA_SEKOLAH)
+// PATCH /api/booking-kunjungan -> konfirmasi/batalkan/selesai (KEPALA_SEKOLAH/BENDAHARA)
 //                              -> batal sendiri (ORANG_TUA)
 export async function PATCH(request: Request) {
   try {
@@ -113,18 +133,21 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
     }
 
-    const { idBooking, status } = await request.json();
+    const { idBooking, status, catatanBendahara } = await request.json();
 
     if (!idBooking || !status) {
       return NextResponse.json({ success: false, error: 'idBooking dan status wajib diisi.' }, { status: 400 });
     }
 
-    const statusValid = ['MENUNGGU', 'DIKONFIRMASI', 'DIBATALKAN', 'SELESAI'];
+    const statusValid: StatusBooking[] = ['MENUNGGU', 'DIKONFIRMASI', 'DIBATALKAN', 'SELESAI'];
     if (!statusValid.includes(status)) {
       return NextResponse.json({ success: false, error: 'Status tidak valid.' }, { status: 400 });
     }
 
-    const booking = await prisma.bookingKunjungan.findUnique({ where: { idBooking } });
+    const booking = await prisma.bookingKunjungan.findUnique({
+      where: { idBooking },
+      include: { slot: true, keluarga: true },
+    });
     if (!booking) {
       return NextResponse.json({ success: false, error: 'Booking tidak ditemukan.' }, { status: 404 });
     }
@@ -140,14 +163,42 @@ export async function PATCH(request: Request) {
           { status: 403 }
         );
       }
-    } else if (sesi.peran !== 'KEPALA_SEKOLAH') {
+    } else if (sesi.peran !== 'KEPALA_SEKOLAH' && sesi.peran !== 'BENDAHARA') {
       return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
     }
 
     const updated = await prisma.bookingKunjungan.update({
       where: { idBooking },
-      data: { status: status as StatusBooking },
+      data: {
+        status: status as StatusBooking,
+        catatanBendahara: catatanBendahara || booking.catatanBendahara,
+      },
+      include: { slot: true, keluarga: true },
     });
+
+    // Notifikasi ke orang tua
+    const tipeNotif = status === 'DIBATALKAN' ? 'BOOKING_DIBATALKAN' : 'BOOKING_DIKONFIRMASI';
+    const judulNotif = status === 'DIBATALKAN' ? 'Booking Dibatalkan' : 'Booking Dikonfirmasi';
+    let pesanNotif = '';
+    if (status === 'DIKONFIRMASI') {
+      pesanNotif = `Booking kunjungan Anda untuk ${booking.jenisBooking === 'BAYAR_SPP' ? 'Pembayaran SPP' : booking.jenisBooking === 'SETOR_TABUNGAN' ? 'Setoran Tabungan' : 'Kunjungan Umum'} pada ${new Date(booking.slot.tanggal).toLocaleDateString('id-ID')} pukul ${booking.slot.jam.toISOString().slice(11, 16)} WIB telah dikonfirmasi. Silakan datang tepat waktu.`;
+    } else if (status === 'SELESAI') {
+      pesanNotif = `Kunjungan Anda untuk ${booking.jenisBooking === 'BAYAR_SPP' ? 'Pembayaran SPP' : booking.jenisBooking === 'SETOR_TABUNGAN' ? 'Setoran Tabungan' : 'Kunjungan Umum'} telah selesai. Terima kasih.`;
+    } else if (status === 'DIBATALKAN') {
+      pesanNotif = `Booking kunjungan Anda untuk ${booking.jenisBooking === 'BAYAR_SPP' ? 'Pembayaran SPP' : booking.jenisBooking === 'SETOR_TABUNGAN' ? 'Setoran Tabungan' : 'Kunjungan Umum'} telah dibatalkan.${catatanBendahara ? ` Catatan: ${catatanBendahara}` : ''}`;
+    }
+
+    if (pesanNotif) {
+      await prisma.notifikasi.create({
+        data: {
+          idKeluarga: booking.idKeluarga,
+          tipe: tipeNotif,
+          judul: judulNotif,
+          pesan: pesanNotif,
+          dataReferensi: JSON.stringify({ idBooking: booking.idBooking, status }),
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, data: updated, message: 'Status booking diperbarui.' });
   } catch (error) {

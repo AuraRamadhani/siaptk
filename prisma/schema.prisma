@@ -20,6 +20,7 @@ model Keluarga {
   anak               Anak[]
   berkasKeluarga     BerkasKeluarga[]
   bookingKunjungan   BookingKunjungan[]
+  notifikasi         Notifikasi[]
 
   @@map("keluarga")
 }
@@ -66,12 +67,15 @@ model SlotJadwal {
 }
 
 model BookingKunjungan {
-  idBooking  String        @id @default(uuid()) @map("id_booking")
-  idKeluarga String        @map("id_keluarga")
-  idSlot     String        @map("id_slot")
-  status     StatusBooking @default(MENUNGGU)
-  keluarga   Keluarga      @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
-  slot       SlotJadwal    @relation(fields: [idSlot], references: [idSlot], onDelete: Cascade)
+  idBooking        String        @id @default(uuid()) @map("id_booking")
+  idKeluarga       String        @map("id_keluarga")
+  idSlot           String        @map("id_slot")
+  jenisBooking     JenisBooking  @default(UMUM) @map("jenis_booking")
+  status           StatusBooking @default(MENUNGGU)
+  catatanOrangTua  String?       @map("catatan_orang_tua") @db.Text
+  catatanBendahara String?       @map("catatan_bendahara") @db.Text
+  keluarga         Keluarga      @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
+  slot             SlotJadwal    @relation(fields: [idSlot], references: [idSlot], onDelete: Cascade)
 
   @@index([idKeluarga])
   @@index([idSlot])
@@ -96,7 +100,9 @@ model Anak {
   tglLahir         DateTime             @map("tgl_lahir") @db.Date
   jenisKelamin     String               @default("L") @map("jenis_kelamin")
   status           StatusAnak           @default(PENDAFTAR)
-  jalurPendaftaran String               @default("Daring") @map("jalur_pendaftaran") // Daring | Onsite
+  jalurPendaftaran String               @default("Daring") @map("jalur_pendaftaran")
+  deadlineBayar    DateTime?            @map("deadline_bayar")
+  alasanPenolakan  String?              @map("alasan_penolakan") @db.Text
   keluarga         Keluarga             @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
   berkasAnak       BerkasAnak[]
   laporanMingguan  LaporanMingguan[]
@@ -145,47 +151,66 @@ model RiwayatKelompok {
 }
 
 model Tagihan {
-  idTagihan  String        @id @default(uuid()) @map("id_tagihan")
-  idAnak     String        @map("id_anak")
-  jenis      JenisTagihan
-  bulan      Int?
-  nominal    Decimal       @db.Decimal(12, 2)
-  diskon     Decimal       @default(0.00) @db.Decimal(12, 2)
-  status     StatusTagihan @default(BELUM_BAYAR)
-  pembayaran Pembayaran[]
-  anak       Anak          @relation(fields: [idAnak], references: [idAnak], onDelete: Cascade)
+  idTagihan     String        @id @default(uuid()) @map("id_tagihan")
+  idAnak        String        @map("id_anak")
+  jenis         JenisTagihan
+  bulan         Int?
+  nominal       Decimal       @db.Decimal(12, 2)
+  diskon        Decimal       @default(0.00) @db.Decimal(12, 2)
+  status        StatusTagihan @default(BELUM_BAYAR)
+  pembayaran    Pembayaran[]
+  anak          Anak          @relation(fields: [idAnak], references: [idAnak], onDelete: Cascade)
 
   @@index([idAnak])
   @@map("tagihan")
 }
 
 model RekeningTabungan {
-  idTabungan String              @id @default(uuid()) @map("id_tabungan")
-  idAnak     String              @unique @map("id_anak")
-  saldo      Decimal             @default(0.00) @db.Decimal(12, 2)
-  anak       Anak                @relation(fields: [idAnak], references: [idAnak], onDelete: Cascade)
-  transaksi  TransaksiTabungan[]
+  idTabungan       String                 @id @default(uuid()) @map("id_tabungan")
+  idAnak           String                 @unique @map("id_anak")
+  saldo            Decimal                @default(0.00) @db.Decimal(12, 2)
+  anak             Anak                   @relation(fields: [idAnak], references: [idAnak], onDelete: Cascade)
+  transaksi        TransaksiTabungan[]
+  penarikan        PenarikanTabungan[]
 
   @@map("rekening_tabungan")
 }
 
 model TransaksiTabungan {
-  idTransaksi String                 @id @default(uuid()) @map("id_transaksi")
-  idTabungan  String                 @map("id_tabungan")
-  idTagihan   String?                @map("id_tagihan")
-  jenis       JenisTransaksiTabungan
-  metode      MetodePembayaran       @default(TUNAI)
-  nominal     Decimal                @db.Decimal(12, 2)
-  keterangan  String?                @db.Text
-  bukti       String?                @db.Text
-  status      StatusVerifikasi       @default(MENUNGGU)
-  dicatatOleh String?                @map("dicatat_oleh")
-  createdAt   DateTime               @default(now()) @map("created_at")
-  tabungan    RekeningTabungan       @relation(fields: [idTabungan], references: [idTabungan], onDelete: Cascade)
+  idTransaksi   String                 @id @default(uuid()) @map("id_transaksi")
+  idTabungan    String                 @map("id_tabungan")
+  idTagihan     String?                @map("id_tagihan")
+  jenis         JenisTransaksiTabungan
+  metode        MetodePembayaran       @default(TUNAI)
+  nominal       Decimal                @db.Decimal(12, 2)
+  keterangan    String?                @db.Text
+  bukti         String?                @db.Text
+  status        StatusVerifikasi       @default(MENUNGGU)
+  dicatatOleh   String?                @map("dicatat_oleh")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  tabungan      RekeningTabungan       @relation(fields: [idTabungan], references: [idTabungan], onDelete: Cascade)
 
   @@index([idTabungan])
   @@index([status, createdAt])
   @@map("transaksi_tabungan")
+}
+
+model PenarikanTabungan {
+  idPenarikan     String                 @id @default(uuid()) @map("id_penarikan")
+  idTabungan      String                 @map("id_tabungan")
+  nominal         Decimal                @db.Decimal(12, 2)
+  keterangan      String?                @db.Text
+  status          StatusVerifikasi       @default(MENUNGGU)
+  catatanPenolakan String?              @map("catatan_penolakan") @db.Text
+  diajukanOleh    String                 @map("diajukan_oleh")
+  diverifikasiOleh String?              @map("diverifikasi_oleh")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  tabungan        RekeningTabungan       @relation(fields: [idTabungan], references: [idTabungan], onDelete: Cascade)
+
+  @@index([idTabungan])
+  @@index([status])
+  @@map("penarikan_tabungan")
 }
 
 model Pembayaran {
@@ -194,10 +219,27 @@ model Pembayaran {
   metode           MetodePembayaran
   buktiTransfer    String?          @map("bukti_transfer") @db.Text
   diverifikasiOleh String?          @map("diverifikasi_oleh")
+  catatanVerifikasi String?         @map("catatan_verifikasi") @db.Text
   tagihan          Tagihan          @relation(fields: [idTagihan], references: [idTagihan], onDelete: Cascade)
 
   @@index([idTagihan])
   @@map("pembayaran")
+}
+
+model Notifikasi {
+  idNotifikasi    String              @id @default(uuid()) @map("id_notifikasi")
+  idKeluarga      String              @map("id_keluarga")
+  tipe            TipeNotifikasi
+  judul           String
+  pesan           String              @db.Text
+  dibaca          Boolean             @default(false)
+  dataReferensi   String?             @map("data_referensi") @db.Text
+  createdAt       DateTime            @default(now()) @map("created_at")
+  keluarga        Keluarga            @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
+
+  @@index([idKeluarga, dibaca])
+  @@index([createdAt])
+  @@map("notifikasi")
 }
 
 model TemaPembelajaran {
@@ -241,6 +283,12 @@ enum StatusBooking {
   SELESAI
 }
 
+enum JenisBooking {
+  UMUM
+  BAYAR_SPP
+  SETOR_TABUNGAN
+}
+
 enum StatusAnak {
   PENDAFTAR
   AKTIF
@@ -268,4 +316,29 @@ enum JenisTransaksiTabungan {
   SETOR
   TARIK
   BAYAR_SPP
+}
+
+enum TipeNotifikasi {
+  TAGIHAN_BARU
+  PEMBAYARAN_DIVERIFIKASI
+  PEMBAYARAN_DITOLAK
+  SETORAN_DIVERIFIKASI
+  SETORAN_DITOLAK
+  PENARIKAN_DIVERIFIKASI
+  PENARIKAN_DITOLAK
+  ANAK_DITERIMA
+  ANAK_DITOLAK
+  DEADLINE_PEMBAYARAN
+  BOOKING_DIKONFIRMASI
+  BOOKING_DIBATALKAN
+  SALDO_TABUNGAN_BERUBAH
+}
+
+model Pengaturan {
+  kunci      String   @id @db.VarChar(100)
+  nilai      String   @db.Text
+  keterangan String?  @db.VarChar(255)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("pengaturan")
 }

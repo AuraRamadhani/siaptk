@@ -246,6 +246,8 @@ model TemaPembelajaran {
   idTema          String            @id @default(uuid()) @map("id_tema")
   namaTema        String            @map("nama_tema")
   mingguKe        Int               @map("minggu_ke")
+  periode         String?           @map("periode")
+  subtemaHarian   String?           @map("subtema_harian") @db.Text
   laporanMingguan LaporanMingguan[]
 
   @@map("tema_pembelajaran")

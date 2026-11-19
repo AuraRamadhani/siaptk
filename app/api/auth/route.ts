@@ -40,6 +40,7 @@ export async function POST(request: Request) {
                 const noHp = formData.get('noHp') as string;
                 const email = (formData.get('email') as string)?.toLowerCase().trim();
                 const kataSandi = (formData.get('password') as string) || '';
+                const alamat = (formData.get('alamat') as string)?.trim() || '';
 
                 const fileKK = formData.get('fileKK') as File | null;
                 const fileKTP = formData.get('fileKTP') as File | null;
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
                         noHp,
                         email,
                         kataSandi: hashSandi(kataSandi),
-                        alamat: `Pekerjaan Ayah: ${pekerjaanAyah || '-'}, Pekerjaan Ibu: ${pekerjaanIbu || '-'}`,
+                        alamat: alamat || (pekerjaanAyah || pekerjaanIbu ? `Pekerjaan Ayah: ${pekerjaanAyah || '-'}, Pekerjaan Ibu: ${pekerjaanIbu || '-'}` : null),
                         fileKK: kkFilename,
                         fileKTP: ktpFilename,
                         berkasKeluarga: {

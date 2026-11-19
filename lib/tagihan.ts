@@ -86,6 +86,19 @@ export async function simpanTarifSpp(db: DbClient, nominal: number): Promise<num
         String(tarif)
       );
     }
+
+    // Sinkronkan seluruh tagihan SPP yang belum lunas dengan tarif baru
+    await db.tagihan.updateMany({
+      where: {
+        jenis: 'SPP',
+        status: {
+          not: 'LUNAS',
+        },
+      },
+      data: {
+        nominal: tarif,
+      },
+    });
   } catch (err) {
     console.error('Gagal menyimpan tarif SPP:', err);
     throw err;

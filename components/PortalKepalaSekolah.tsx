@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import PanelKelompok from '@/components/PanelKelompok';
 import PanelArsip from '@/components/PanelArsip';
+import PanelAlumni from '@/components/PanelAlumni';
 
 type Dashboard = {
   siswa: { total: number; aktif: number; pendaftar: number };
@@ -41,13 +42,14 @@ type Pendaftar = {
 
 const rp = (n: number) => `Rp${Number(n || 0).toLocaleString('id-ID')}`;
 
-type Tab = 'dashboard' | 'verifikasi_berkas' | 'kelompok' | 'arsip';
+type Tab = 'dashboard' | 'verifikasi_berkas' | 'kelompok' | 'arsip' | 'alumni';
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'verifikasi_berkas', label: 'Verifikasi Berkas', icon: ClipboardCheck },
   { id: 'kelompok', label: 'Pengelompokan Rombel', icon: Users },
   { id: 'arsip', label: 'Arsip Digital Siswa', icon: FolderArchive },
+  { id: 'alumni', label: 'Data Alumni (DB 2)', icon: GraduationCap },
 ];
 
 const TAB_INFO: Record<Tab, { title: string; desc: string }> = {
@@ -66,6 +68,10 @@ const TAB_INFO: Record<Tab, { title: string; desc: string }> = {
   arsip: {
     title: 'Arsip Digital Siswa Terdaftar',
     desc: 'Pusat arsip berkas lengkap, dokumen identitas, dan riwayat kelompok bagi seluruh siswa aktif yang terdaftar.',
+  },
+  alumni: {
+    title: 'Kelulusan Siswa & Data Alumni (Database 2)',
+    desc: 'Pengelolaan siswa lulus dan pencatatan riwayat alumni yang disimpan ke database sekunder (alumni_siaptk).',
   },
 };
 
@@ -225,6 +231,7 @@ export default function PortalKepalaSekolah() {
           {tab === 'verifikasi_berkas' && <PanelArsip mode="verifikasi_pendaftaran" />}
           {tab === 'kelompok' && <PanelKelompok />}
           {tab === 'arsip' && <PanelArsip mode="arsip_aktif" />}
+          {tab === 'alumni' && <PanelAlumni />}
 
           {tab === 'dashboard' && (
             <>

@@ -8,6 +8,7 @@ import {
   X,
   Wallet,
   Receipt,
+  FileDown,
   Banknote,
   Calendar,
   UserPlus,
@@ -21,6 +22,7 @@ import {
 import PanelJadwal from '@/components/PanelJadwal';
 import PanelPendaftaranAdmin from '@/components/PanelPendaftaranAdmin';
 import { useToast } from '@/components/Toast';
+import KuitansiDigitalModal, { DataKuitansi } from '@/components/KuitansiDigitalModal';
 
 type Trx = {
   idTransaksi: string;
@@ -180,6 +182,7 @@ export default function PortalBendahara() {
   const [inputTarifSpp, setInputTarifSpp] = useState<string>('350000');
   const [bulanGenerate, setBulanGenerate] = useState<number>(new Date().getMonth() + 1);
   const [loadingTarif, setLoadingTarif] = useState<boolean>(false);
+  const [kuitansiAktif, setKuitansiAktif] = useState<DataKuitansi | null>(null);
 
   const muat = async () => {
     setLoading(true);
@@ -641,8 +644,15 @@ export default function PortalBendahara() {
                         </span>
                       </td>
                       <td className="px-3 py-3 text-slate-600">
-                        <span className="font-semibold">Penarikan Tabungan</span>
-                        {p.keterangan && <span className="block text-[11px] text-slate-400">{p.keterangan}</span>}
+                        <span className="font-semibold text-slate-800">Penarikan Tabungan</span>
+                        {p.keterangan ? (
+                          <div className="mt-1 p-2 rounded-xl bg-teal-50 border border-teal-100 text-teal-900 text-[11px] font-medium leading-relaxed">
+                            <span className="font-bold text-[#095c51] block uppercase text-[10px]">Tujuan Transfer (TF):</span>
+                            {p.keterangan}
+                          </div>
+                        ) : (
+                          <span className="block text-[11px] text-slate-400">Tanpa rincian rekening</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-right font-bold text-rose-700">{rp(Number(p.nominal))}</td>
                       <td className="px-3 py-3 text-slate-600">{p.diajukanOleh}</td>
@@ -748,10 +758,33 @@ export default function PortalBendahara() {
                               <span className="text-slate-400">—</span>
                             )}
                           </td>
-                          <td className="px-6 py-3 text-right">
+                          <td className="px-6 py-3 text-right space-x-2 whitespace-nowrap">
                             <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
                               LUNAS
                             </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setKuitansiAktif({
+                                  noKuitansi: `KWT/${new Date().getFullYear()}/${tg.idTagihan.slice(-6).toUpperCase()}`,
+                                  tanggal: new Date().toLocaleDateString('id-ID', { dateStyle: 'long' }),
+                                  namaSiswa: tg.anak?.nama || (tg.anak as any)?.name || 'Siswa',
+                                  kelompok: (tg.anak as any)?.kelompok || (tg.anak as any)?.group || null,
+                                  namaWali: tg.anak?.keluarga?.namaAyah || tg.anak?.keluarga?.namaIbu || null,
+                                  jenisPembayaran: tg.jenis === 'PENDAFTARAN' ? 'Pendaftaran Siswa Baru' : 'SPP Bulanan',
+                                  periode: tg.bulan ? `Bulan ke-${tg.bulan}` : null,
+                                  nominal: Number(tg.nominal) - Number(tg.diskon || 0),
+                                  metodePembayaran: bayar?.metode || 'Transfer Bank (TF)',
+                                  status: 'LUNAS',
+                                  keterangan: 'Pembayaran telah diverifikasi lunas oleh Bendahara.',
+                                })
+                              }
+                              className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#095c51] font-bold text-[10px] inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
+                              title="Cetak Kuitansi Digital PDF"
+                            >
+                              <FileDown className="w-3 h-3" />
+                              <span>Kuitansi PDF</span>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -860,11 +893,11 @@ export default function PortalBendahara() {
                   </span>
                   <input
                     type="number"
-                    min="1000"
-                    step="5000"
+                    min="1"
+                    step="any"
                     value={inputTarifSpp}
                     onChange={(e) => setInputTarifSpp(e.target.value)}
-                    placeholder="Contoh: 350000"
+                    placeholder="Masukkan nominal bebas, contoh: 135000"
                     className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30"
                     required
                   />
@@ -1121,6 +1154,11 @@ export default function PortalBendahara() {
           </div>
         </div>
       )}
+      {/* Modal Kuitansi Digital Resmi (PDF) */}
+      <KuitansiDigitalModal
+        data={kuitansiAktif}
+        onClose={() => setKuitansiAktif(null)}
+      />
     </div>
   );
 }

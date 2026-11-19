@@ -12,7 +12,7 @@ export default async function HalamanGuru() {
     <main className="min-h-screen bg-gray-50 text-gray-800 flex flex-col">
       <BilahAtas judul="Portal Guru Kelas" nama={sesi.nama} inisial="GR" />
       <div className="w-full flex-1">
-        <PortalGuru />
+        <PortalGuru namaGuru={sesi.nama} />
       </div>
     </main>
   );

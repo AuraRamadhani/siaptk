@@ -5,7 +5,7 @@ import path from 'path';
 import { mkdirSync } from 'fs';
 import { sesiSekarang } from '@/lib/sesi';
 import { otomatisKelompokAnak } from '@/lib/kelompok';
-import { buatTagihanPendaftaran, pastikanTagihanSppBulanan } from '@/lib/tagihan';
+import { buatTagihanPendaftaran, pastikanTagihanSppBulanan, ambilTarifSpp } from '@/lib/tagihan';
 
 /** Validasi berkas unggahan: hanya PDF/JPG/PNG, maksimum 5 MB. */
 const TIPE_BERKAS = new Set(['application/pdf', 'image/jpeg', 'image/png']);
@@ -83,6 +83,8 @@ export async function GET(request: Request) {
         // Siswa aktif memiliki tagihan SPP bulanan bulan berjalan.
         let perluMuatUlang = false;
         const bulanSekarang = new Date().getMonth() + 1;
+        const tarifAktif = await ambilTarifSpp(prisma);
+
         for (const a of keluarga.anak) {
             const berkasObj = Array.isArray(a.berkasAnak) ? a.berkasAnak[0] : a.berkasAnak;
             const berkasDiverifikasi = berkasObj?.statusVerifikasi === 'DIVERIFIKASI';
@@ -94,6 +96,16 @@ export async function GET(request: Request) {
             if (a.status === 'AKTIF' && !a.tagihan.some((t) => t.jenis === 'SPP' && t.bulan === bulanSekarang)) {
                 await pastikanTagihanSppBulanan(prisma, a.idAnak, bulanSekarang);
                 perluMuatUlang = true;
+            }
+            // Pastikan nominal tagihan SPP yang belum lunas selalu sinkron dengan tarif yang disetel Bendahara
+            for (const t of a.tagihan) {
+                if (t.jenis === 'SPP' && t.status !== 'LUNAS' && Number(t.nominal) !== tarifAktif) {
+                    await prisma.tagihan.update({
+                        where: { idTagihan: t.idTagihan },
+                        data: { nominal: tarifAktif },
+                    });
+                    perluMuatUlang = true;
+                }
             }
         }
         if (perluMuatUlang) {

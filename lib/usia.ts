@@ -27,6 +27,64 @@ export interface InfoKelompokUsia {
 }
 
 /**
+ * Validasi kelayakan pendaftaran berdasarkan tanggal lahir per 1 Juli 2026:
+ * - Minimal 3 tahun per 1 Juli untuk kelompok KB (Lahir maksimal 1 Juli 2023)
+ * - Minimal 4 tahun per 1 Juli untuk kelompok TK A (Lahir maksimal 1 Juli 2022)
+ * - Minimal 5 tahun per 1 Juli untuk kelompok TK B (Lahir maksimal 1 Juli 2021)
+ */
+export function cekKelayakanTanggalLahir(
+  tglLahir: Date | string,
+  acuan = TANGGAL_ACUAN_PPDB
+): {
+  valid: boolean;
+  pesan: string;
+  kelompok: InfoKelompokUsia | null;
+} {
+  if (!tglLahir) {
+    return { valid: false, pesan: 'Tanggal lahir belum diisi.', kelompok: null };
+  }
+  const lahir = typeof tglLahir === 'string' ? new Date(tglLahir) : tglLahir;
+  if (Number.isNaN(lahir.getTime())) {
+    return { valid: false, pesan: 'Format tanggal lahir tidak valid.', kelompok: null };
+  }
+
+  const usia = hitungUsia(lahir, acuan);
+  const info = tentukanKelompokDariTglLahir(lahir, acuan);
+
+  if (usia < 3) {
+    return {
+      valid: false,
+      pesan:
+        'Anak belum memenuhi batas minimal usia masuk sekolah (Minimal 3 tahun per 1 Juli untuk kelas KB / lahir maksimal 1 Juli 2023).',
+      kelompok: null,
+    };
+  }
+
+  if (usia > 6) {
+    return {
+      valid: false,
+      pesan:
+        'Usia anak melebihi batas maksimal kelompok TK B (Maksimal 6 tahun per 1 Juli 2026). Disarankan mendaftar ke jenjang SD.',
+      kelompok: null,
+    };
+  }
+
+  if (info) {
+    return {
+      valid: true,
+      pesan: `Memenuhi syarat pendaftaran: ${info.labelLengkap} (Usia ${info.usia} tahun per 1 Juli 2026).`,
+      kelompok: info,
+    };
+  }
+
+  return {
+    valid: false,
+    pesan: 'Tanggal lahir tidak memenuhi kriteria kelompok usia KB, TK A, atau TK B per 1 Juli.',
+    kelompok: null,
+  };
+}
+
+/**
  * Menentukan kelompok anak secara otomatis berdasarkan tanggal lahir:
  * - KB (Kelompok Bermain): 3-4 tahun (usia 3 tahun)
  * - TK A: 4-5 tahun (usia 4 tahun)

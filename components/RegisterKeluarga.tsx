@@ -22,6 +22,7 @@ export default function RegisterKeluarga({
         namaIbu: '',
         pekerjaanAyah: '',
         pekerjaanIbu: '',
+        alamat: '',
         noWhatsapp: '',
         email: '',
         password: '',
@@ -42,7 +43,7 @@ export default function RegisterKeluarga({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.namaAyah || !formData.namaIbu || !formData.email || !formData.password || !formData.noWhatsapp) {
+        if (!formData.namaAyah || !formData.namaIbu || !formData.email || !formData.password || !formData.noWhatsapp || !formData.alamat) {
             toast.warning("Mohon lengkapi data wajib yang bertanda bintang (*)");
             return;
         }
@@ -71,6 +72,7 @@ export default function RegisterKeluarga({
             dataToSend.append('namaIbu', formData.namaIbu);
             dataToSend.append('pekerjaanAyah', formData.pekerjaanAyah);
             dataToSend.append('pekerjaanIbu', formData.pekerjaanIbu);
+            dataToSend.append('alamat', formData.alamat);
             dataToSend.append('noHp', formData.noWhatsapp);
             dataToSend.append('email', formData.email);
             dataToSend.append('password', formData.password);
@@ -212,6 +214,20 @@ export default function RegisterKeluarga({
                                 onChange={(e) => setFormData({ ...formData, pekerjaanIbu: e.target.value })}
                                 placeholder="Contoh: Ibu Rumah Tangga"
                                 className="w-full px-4 py-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50"
+                            />
+                        </div>
+
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                                Alamat Tempat Tinggal <span className="text-rose-500">*</span>
+                            </label>
+                            <textarea
+                                rows={2}
+                                value={formData.alamat}
+                                onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
+                                placeholder="Jl. ..., RT/RW ..., Kelurahan, Kecamatan, Kota/Kabupaten"
+                                className="w-full px-4 py-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#095c51]/30 bg-slate-50/50 resize-none"
+                                required
                             />
                         </div>
 

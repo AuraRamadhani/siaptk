@@ -32,10 +32,17 @@ import {
     Trash2,
     AlertCircle,
     Info,
+    FileDown,
+    Receipt,
+    Pencil,
+    Sparkles,
+    BookOpen,
+    CheckCircle,
 } from "lucide-react";
 import logoSIAPTK from "../app/assets/siap-tk-logo.png";
-import { tentukanKelompokDariTglLahir } from "@/lib/usia";
+import { tentukanKelompokDariTglLahir, cekKelayakanTanggalLahir } from "@/lib/usia";
 import { useToast } from "@/components/Toast";
+import KuitansiDigitalModal, { DataKuitansi } from "@/components/KuitansiDigitalModal";
 
 interface ParentViewProps {
     childrenData: any[];
@@ -193,6 +200,57 @@ export default function PortalOrangTua({
     const [tarikAnakId, setTarikAnakId] = useState<string>("");
     const [tarikNominal, setTarikNominal] = useState<string>("");
     const [tarikKeterangan, setTarikKeterangan] = useState<string>("");
+    const [tarikNamaBank, setTarikNamaBank] = useState<string>("BCA");
+    const [tarikNoRekening, setTarikNoRekening] = useState<string>("");
+    const [tarikNamaPemilik, setTarikNamaPemilik] = useState<string>("");
+
+    // State untuk Kuitansi Digital Resmi (PDF)
+    const [kuitansiAktif, setKuitansiAktif] = useState<DataKuitansi | null>(null);
+
+    // State untuk Modal Edit Alamat & Data Keluarga
+    const [showEditAlamatModal, setShowEditAlamatModal] = useState<boolean>(false);
+    const [editAlamatInput, setEditAlamatInput] = useState<string>("");
+    const [editNamaAyah, setEditNamaAyah] = useState<string>("");
+    const [editNamaIbu, setEditNamaIbu] = useState<string>("");
+    const [editNoHp, setEditNoHp] = useState<string>("");
+    const [savingAlamat, setSavingAlamat] = useState<boolean>(false);
+
+    const bukaModalEditAlamat = () => {
+        setEditAlamatInput(keluarga?.alamat || "");
+        setEditNamaAyah(keluarga?.namaAyah || "");
+        setEditNamaIbu(keluarga?.namaIbu || "");
+        setEditNoHp(keluarga?.noHp || "");
+        setShowEditAlamatModal(true);
+    };
+
+    const handleSimpanEditAlamat = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSavingAlamat(true);
+        try {
+            const res = await fetch("/api/keluarga", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    alamat: editAlamatInput.trim(),
+                    namaAyah: editNamaAyah.trim(),
+                    namaIbu: editNamaIbu.trim(),
+                    noHp: editNoHp.trim(),
+                }),
+            }).then((r) => r.json());
+
+            if (res.success) {
+                toast.success("Alamat dan data keluarga berhasil diperbarui!");
+                setShowEditAlamatModal(false);
+                fetchFamilyData();
+            } else {
+                toast.error(res.error || "Gagal memperbarui data keluarga.");
+            }
+        } catch {
+            toast.error("Terjadi kesalahan saat menyimpan data.");
+        } finally {
+            setSavingAlamat(false);
+        }
+    };
 
     // State untuk Notifikasi
     const [showNotifikasi, setShowNotifikasi] = useState<boolean>(false);
@@ -267,13 +325,46 @@ export default function PortalOrangTua({
                         const kelompokUsia = tentukanKelompokDariTglLahir(ch.tglLahir);
                         const namaKelompok = ch.riwayatKelompok?.[0]?.kelompok?.nama || kelompokUsia?.nama || "Belum Dikelompokkan";
 
-                        const laporanDb = (ch.laporanMingguan || []).map((lap: any) => ({
-                            id: lap.idLaporan,
-                            tema: lap.tema?.namaTema || "Kegiatan Mingguan",
-                            periode: lap.tema?.mingguKe ? `Minggu ke-${lap.tema.mingguKe} · Aspek: ${lap.aspek}` : lap.aspek,
-                            isi: lap.catatanKegiatan,
-                            dokumentasi: [lap.aspek],
-                        }));
+                        const laporanDb = (ch.laporanMingguan || []).map((lap: any) => {
+                            let detail = null;
+                            let foto = null;
+                            let catatanTeks = lap.catatanKegiatan || "";
+                            try {
+                                if (catatanTeks.trim().startsWith("{")) {
+                                    const parsed = JSON.parse(catatanTeks);
+                                    if (parsed.versi === "2.0" || parsed.aspekPerkembangan || parsed.rekapHarian) {
+                                        detail = parsed;
+                                        catatanTeks = parsed.catatanPerkembangan || "";
+                                        foto = parsed.fotoAktivitas || null;
+                                    }
+                                }
+                            } catch {
+                                // legacy format
+                            }
+                            if (!detail && catatanTeks.includes("\n[FOTO_AKTIVITAS]:")) {
+                                const marker = "\n[FOTO_AKTIVITAS]:";
+                                const idx = catatanTeks.indexOf(marker);
+                                foto = catatanTeks.slice(idx + marker.length).trim();
+                                catatanTeks = catatanTeks.slice(0, idx).trim();
+                            }
+
+                            return {
+                                id: lap.idLaporan,
+                                tema: lap.tema?.namaTema || "Kegiatan Mingguan",
+                                mingguKe: lap.tema?.mingguKe || 1,
+                                periode: detail?.periode || lap.tema?.periode || `Minggu ke-${lap.tema?.mingguKe || 1}`,
+                                subtema: detail?.subtema || null,
+                                guru: detail?.guru || "Guru Kelas",
+                                rekapHarian: detail?.rekapHarian || null,
+                                aspekPerkembangan: detail?.aspekPerkembangan || null,
+                                rekomendasiRumah: detail?.rekomendasiRumah || null,
+                                isi: catatanTeks,
+                                foto,
+                                detail,
+                                aspek: lap.aspek,
+                                dokumentasi: [lap.aspek],
+                            };
+                        });
 
                         return {
                             id: String(ch.idAnak),
@@ -367,7 +458,8 @@ export default function PortalOrangTua({
     }, []);
 
     // Perhitungan kelompok otomatis saat mendaftar anak berdasarkan tanggal lahir
-    const infoKelompokCalon = tglLahirAnak ? tentukanKelompokDariTglLahir(tglLahirAnak) : null;
+    const statusKelayakanCalon = tglLahirAnak ? cekKelayakanTanggalLahir(tglLahirAnak) : null;
+    const infoKelompokCalon = statusKelayakanCalon?.kelompok || null;
 
     const handleLanjutStep = () => {
         if (modalStep === 1) {
@@ -379,8 +471,8 @@ export default function PortalOrangTua({
                 toast.warning("NIK harus terdiri dari tepat 16 digit angka (tidak boleh kurang atau lebih).");
                 return;
             }
-            if (!infoKelompokCalon) {
-                toast.warning("Usia anak harus berada pada rentang KB/TK (3–6 tahun per 1 Juli 2026).");
+            if (!statusKelayakanCalon || !statusKelayakanCalon.valid) {
+                toast.warning(statusKelayakanCalon?.pesan || "Tanggal lahir belum memenuhi syarat kelompok KB/TK (Minimal per 1 Juli 2026: KB min 3 th, TK A min 4 th, TK B min 5 th).");
                 return;
             }
             setModalStep(2);
@@ -712,23 +804,32 @@ export default function PortalOrangTua({
             return;
         }
 
+        if (!tarikNoRekening.trim() || !tarikNamaPemilik.trim()) {
+            toast.warning("Nomor rekening dan Nama pemilik rekening wajib diisi untuk tujuan transfer penarikan!");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
+            const ketLengkap = `TF ke ${tarikNamaBank} No. Rek: ${tarikNoRekening.trim()} a.n. ${tarikNamaPemilik.trim()}${tarikKeterangan.trim() ? ` (Catatan: ${tarikKeterangan.trim()})` : ''}`;
+
             const res = await fetch("/api/penarikan-tabungan", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     idAnak: targetAnakId,
                     nominal: nilai,
-                    keterangan: tarikKeterangan.trim() || "Penarikan tabungan oleh orang tua",
+                    keterangan: ketLengkap,
                 }),
             }).then((r) => r.json());
 
             if (res.success) {
-                toast.success("Pengajuan penarikan tabungan dikirim ke Bendahara untuk verifikasi!");
+                toast.success("Pengajuan penarikan tabungan berhasil dikirim! Bendahara akan mentransfer ke nomor rekening Anda.");
                 setShowTarikModal(false);
                 setTarikNominal("");
                 setTarikKeterangan("");
+                setTarikNoRekening("");
+                setTarikNamaPemilik("");
                 fetchFamilyData();
                 fetchNotifikasi();
             } else {
@@ -1221,14 +1322,37 @@ export default function PortalOrangTua({
                                                                 </span>
                                                             </div>
                                                         ) : tagihanPendaftaran?.status === "LUNAS" ? (
-                                                            <div className="flex flex-col gap-1">
+                                                            <div className="flex flex-col gap-1.5">
                                                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] w-fit">
                                                                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                                                     <span>Pendaftaran Lunas</span>
                                                                 </span>
-                                                                <span className="text-[11px] font-bold text-slate-700">
-                                                                    Rp {nominalPendaftaran.toLocaleString("id-ID")}
-                                                                </span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[11px] font-bold text-slate-700">
+                                                                        Rp {nominalPendaftaran.toLocaleString("id-ID")}
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setKuitansiAktif({
+                                                                            noKuitansi: `KWT/${new Date().getFullYear()}/${tagihanPendaftaran.idTagihan.slice(-6).toUpperCase()}`,
+                                                                            tanggal: new Date().toLocaleDateString('id-ID', { dateStyle: 'long' }),
+                                                                            namaSiswa: ch.name || (ch as any).nama || 'Siswa',
+                                                                            kelompok: ch.group || ch.kelompok || null,
+                                                                            namaWali: keluarga?.namaAyah || keluarga?.namaIbu || null,
+                                                                            jenisPembayaran: 'Pendaftaran Siswa Baru',
+                                                                            periode: 'Tahun Ajaran 2026/2027',
+                                                                            nominal: Number(nominalPendaftaran),
+                                                                            metodePembayaran: 'Transfer Bank (TF)',
+                                                                            status: 'LUNAS',
+                                                                            keterangan: 'Biaya registrasi & administrasi pendaftaran siswa baru.',
+                                                                        })}
+                                                                        className="px-2 py-0.5 rounded-md bg-teal-50 hover:bg-teal-100 text-[#095c51] text-[10px] font-bold flex items-center gap-1 transition cursor-pointer border border-teal-200"
+                                                                        title="Cetak Kuitansi Pendaftaran"
+                                                                    >
+                                                                        <FileDown className="w-2.5 h-2.5" />
+                                                                        <span>Kuitansi</span>
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         ) : tagihanPendaftaran?.status === "MENUNGGU_VERIFIKASI" ? (
                                                             <div className="flex flex-col gap-1">
@@ -1732,9 +1856,32 @@ export default function PortalOrangTua({
                                                         </td>
                                                         <td className="p-5 text-right">
                                                             {t.status === "LUNAS" ? (
-                                                                <span className="text-emerald-700 font-semibold">
-                                                                    Terverifikasi
-                                                                </span>
+                                                                <div className="inline-flex items-center gap-2">
+                                                                    <span className="text-emerald-700 font-semibold text-[11px]">
+                                                                        Terverifikasi
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setKuitansiAktif({
+                                                                            noKuitansi: `KWT/${new Date().getFullYear()}/${t.idTagihan.slice(-6).toUpperCase()}`,
+                                                                            tanggal: new Date().toLocaleDateString('id-ID', { dateStyle: 'long' }),
+                                                                            namaSiswa: activeChild?.name || 'Siswa',
+                                                                            kelompok: activeChild?.group || null,
+                                                                            namaWali: keluarga?.namaAyah || keluarga?.namaIbu || null,
+                                                                            jenisPembayaran: t.jenis === 'PENDAFTARAN' ? 'Pendaftaran Siswa Baru' : 'SPP Bulanan',
+                                                                            periode: t.bulan ? `Bulan ${t.bulan}` : null,
+                                                                            nominal: Number(t.nominal),
+                                                                            metodePembayaran: 'Transfer Bank (TF)',
+                                                                            status: 'LUNAS',
+                                                                            keterangan: 'Pembayaran telah terverifikasi lunas oleh Bendahara.',
+                                                                        })}
+                                                                        className="px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-[#095c51] rounded-lg font-bold text-[11px] inline-flex items-center gap-1 transition shadow-xs cursor-pointer"
+                                                                        title="Unduh Kuitansi Pembayaran PDF"
+                                                                    >
+                                                                        <FileDown className="w-3 h-3" />
+                                                                        <span>Kuitansi PDF</span>
+                                                                    </button>
+                                                                </div>
                                                             ) : t.status === "MENUNGGU_VERIFIKASI" ? (
                                                                 <span className="text-amber-700 font-semibold">
                                                                     Diproses Bendahara
@@ -2081,9 +2228,9 @@ export default function PortalOrangTua({
                         <div className="space-y-6">
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex justify-between items-center flex-wrap gap-4">
                                 <div>
-                                    <h1 className="text-xl font-bold text-slate-900">Laporan Mingguan Pembelajaran</h1>
+                                    <h1 className="text-xl font-bold text-slate-900">Laporan Perkembangan Mingguan</h1>
                                     <p className="text-xs text-slate-500 mt-1">
-                                        Pantau perkembangan harian dan mingguan tematik siswa dari guru kelas.
+                                        Pantau rekap kegiatan pembelajaran harian, capaian 5 aspek perkembangan, dan saran pendampingan dari guru.
                                     </p>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
@@ -2104,52 +2251,216 @@ export default function PortalOrangTua({
                             </div>
 
                             {(!activeChild.laporanMingguan || activeChild.laporanMingguan.length === 0) ? (
-                                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xs text-center text-xs text-slate-400">
-                                    Belum ada laporan mingguan untuk {activeChild.name}.
+                                <div className="bg-white p-12 rounded-3xl border border-slate-200 shadow-xs text-center">
+                                    <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                                    <div className="text-sm font-bold text-slate-700">Belum Ada Laporan Mingguan</div>
+                                    <p className="text-xs text-slate-400 mt-1">
+                                        Guru kelas belum mempublikasikan laporan perkembangan mingguan untuk {activeChild.name}.
+                                    </p>
                                 </div>
                             ) : (
-                                <div className="space-y-4">
-                                    {activeChild.laporanMingguan.map((lap: any, idx: number) => (
-                                        <div
-                                            key={lap.id || idx}
-                                            className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4"
-                                        >
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <h2 className="text-sm font-bold text-slate-900">
-                                                        Tema: {lap.tema}
-                                                    </h2>
-                                                    <p className="text-[11px] text-slate-400 mt-0.5">{lap.periode}</p>
-                                                </div>
-                                                <span className="px-3 py-1 bg-teal-100 text-[#095c51] rounded-xl text-xs font-bold">
-                                                    {activeChild.group} - {activeChild.name}
-                                                </span>
-                                            </div>
+                                <div className="space-y-6">
+                                    {activeChild.laporanMingguan.map((lap: any, idx: number) => {
+                                        const badgeWarna = (hasil: string) => {
+                                            if (hasil === "BSB") return "bg-emerald-100 text-emerald-800 border-emerald-300";
+                                            if (hasil === "BSH") return "bg-teal-100 text-[#095c51] border-teal-300";
+                                            if (hasil === "MB") return "bg-amber-100 text-amber-800 border-amber-300";
+                                            return "bg-rose-100 text-rose-800 border-rose-300";
+                                        };
 
-                                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 leading-relaxed">
-                                                {lap.isi}
-                                            </div>
+                                        const labelHasil = (hasil: string) => {
+                                            if (hasil === "BSB") return "BSB (Berkembang Sangat Baik)";
+                                            if (hasil === "BSH") return "BSH (Berkembang Sesuai Harapan)";
+                                            if (hasil === "MB") return "MB (Mulai Berkembang)";
+                                            return "BB (Belum Berkembang)";
+                                        };
 
-                                            {lap.dokumentasi && lap.dokumentasi.length > 0 && (
-                                                <div>
-                                                    <div className="text-xs font-bold text-slate-700 mb-2">
-                                                        Aspek Perkembangan
+                                        return (
+                                            <div
+                                                key={lap.id || idx}
+                                                className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-xs space-y-6"
+                                            >
+                                                {/* BAGIAN 1: INFORMASI LAPORAN */}
+                                                <div className="p-4 sm:p-5 bg-gradient-to-br from-teal-50/70 to-emerald-50/40 rounded-2xl border border-teal-100/80">
+                                                    <div className="flex items-center justify-between flex-wrap gap-2 pb-3 mb-3 border-b border-teal-100">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="px-2.5 py-1 bg-[#095c51] text-white rounded-lg text-[11px] font-bold">
+                                                                Minggu ke-{lap.mingguKe}
+                                                            </span>
+                                                            <span className="text-xs font-semibold text-slate-600">
+                                                                Periode: <strong className="text-slate-800">{lap.periode || "-"}</strong>
+                                                            </span>
+                                                        </div>
+                                                        <span className="px-3 py-1 bg-white text-[#095c51] border border-teal-200 rounded-xl text-xs font-bold shadow-xs">
+                                                            {activeChild.group} • {activeChild.name}
+                                                        </span>
                                                     </div>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {lap.dokumentasi.map((doc: string, dIdx: number) => (
-                                                            <div
-                                                                key={dIdx}
-                                                                className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-200 flex items-center space-x-2 text-slate-600"
-                                                            >
-                                                                <ImageIcon className="w-4 h-4 text-[#095c51]" />
-                                                                <span className="text-[11px] font-semibold">{doc}</span>
-                                                            </div>
-                                                        ))}
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                                        <div>
+                                                            <span className="text-slate-500 block text-[11px]">Nama Anak:</span>
+                                                            <strong className="text-slate-800">{activeChild.name}</strong>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-slate-500 block text-[11px]">Tema Pembelajaran:</span>
+                                                            <strong className="text-[#095c51]">{lap.tema}</strong>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-slate-500 block text-[11px]">Subtema:</span>
+                                                            <strong className="text-slate-800">{lap.subtema || "-"}</strong>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-slate-500 block text-[11px]">Guru Pembimbing:</span>
+                                                            <strong className="text-slate-800">{lap.guru || "Guru Kelas"}</strong>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+
+                                                {/* BAGIAN 2: REKAP PEMBELAJARAN (SENIN - JUMAT) */}
+                                                {Array.isArray(lap.rekapHarian) && lap.rekapHarian.length > 0 && (
+                                                    <div className="space-y-2.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <Calendar className="w-4 h-4 text-[#095c51]" />
+                                                            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                                                                1. Rekap Pembelajaran Mingguan (Senin – Jumat)
+                                                            </h3>
+                                                        </div>
+                                                        <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                                                            <table className="w-full text-left text-xs">
+                                                                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                                                                    <tr>
+                                                                        <th className="py-2.5 px-3.5 w-28">Hari</th>
+                                                                        <th className="py-2.5 px-3.5 w-36">Tanggal</th>
+                                                                        <th className="py-2.5 px-3.5">Subtema / Materi Pembelajaran</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-slate-100 text-slate-700">
+                                                                    {lap.rekapHarian.map((item: any, rIdx: number) => (
+                                                                        <tr key={rIdx} className="hover:bg-slate-50/50">
+                                                                            <td className="py-2.5 px-3.5 font-bold text-[#095c51] whitespace-nowrap">
+                                                                                {item.hari}
+                                                                            </td>
+                                                                            <td className="py-2.5 px-3.5 text-slate-500 whitespace-nowrap">
+                                                                                {item.tanggal || "—"}
+                                                                            </td>
+                                                                            <td className="py-2.5 px-3.5 font-medium text-slate-800">
+                                                                                {item.subtema || item.materi || item.kegiatan || "-"}
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* BAGIAN 3: LAPORAN PERKEMBANGAN ANAK (5 ASPEK) */}
+                                                {Array.isArray(lap.aspekPerkembangan) && lap.aspekPerkembangan.length > 0 ? (
+                                                    <div className="space-y-2.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <Sparkles className="w-4 h-4 text-[#095c51]" />
+                                                            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                                                                2. Capaian Aspek Perkembangan Anak
+                                                            </h3>
+                                                        </div>
+                                                        <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                                                            <table className="w-full text-left text-xs">
+                                                                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                                                                    <tr>
+                                                                        <th className="py-2.5 px-3.5 w-44">Aspek Perkembangan</th>
+                                                                        <th className="py-2.5 px-3.5">Indikator</th>
+                                                                        <th className="py-2.5 px-3.5 w-48 text-center">Hasil Capaian</th>
+                                                                        <th className="py-2.5 px-3.5">Catatan Guru</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-slate-100 text-slate-700">
+                                                                    {lap.aspekPerkembangan.map((asp: any, aIdx: number) => (
+                                                                        <tr key={aIdx} className="hover:bg-slate-50/50">
+                                                                            <td className="py-2.5 px-3.5 font-bold text-slate-800">
+                                                                                {asp.aspek}
+                                                                            </td>
+                                                                            <td className="py-2.5 px-3.5 text-slate-600">
+                                                                                {asp.indikator || "-"}
+                                                                            </td>
+                                                                            <td className="py-2.5 px-3.5 text-center">
+                                                                                <span
+                                                                                    className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border ${badgeWarna(
+                                                                                        asp.hasil
+                                                                                    )}`}
+                                                                                >
+                                                                                    {labelHasil(asp.hasil)}
+                                                                                </span>
+                                                                            </td>
+                                                                            <td className="py-2.5 px-3.5 text-slate-600 italic">
+                                                                                {asp.catatan || "-"}
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-3 text-[11px] text-slate-500 pt-1">
+                                                            <span>Keterangan:</span>
+                                                            <span className="font-semibold text-rose-600">BB = Belum Berkembang</span>
+                                                            <span className="font-semibold text-amber-600">MB = Mulai Berkembang</span>
+                                                            <span className="font-semibold text-teal-700">BSH = Berkembang Sesuai Harapan</span>
+                                                            <span className="font-semibold text-emerald-700">BSB = Berkembang Sangat Baik</span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    /* Fallback aspek format sederhana */
+                                                    lap.aspek && (
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-semibold text-slate-500">Aspek Utama:</span>
+                                                            <span className="px-3 py-1 bg-teal-50 text-[#095c51] rounded-xl text-xs font-bold border border-teal-200">
+                                                                {lap.aspek}
+                                                            </span>
+                                                        </div>
+                                                    )
+                                                )}
+
+                                                {/* BAGIAN 4: CATATAN GURU & REKOMENDASI ORANG TUA */}
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                                                        <div className="text-xs font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                                            <FileText className="w-3.5 h-3.5 text-[#095c51]" />
+                                                            Catatan Perkembangan Minggu Ini
+                                                        </div>
+                                                        <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                                            {lap.isi || "Belum ada catatan khusus minggu ini."}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="p-4 bg-teal-50/60 rounded-2xl border border-teal-100">
+                                                        <div className="text-xs font-bold text-[#095c51] mb-1.5 flex items-center gap-1.5">
+                                                            <CheckCircle className="w-3.5 h-3.5 text-[#095c51]" />
+                                                            Rekomendasi Pendampingan di Rumah
+                                                        </div>
+                                                        <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                                            {lap.rekomendasiRumah || "Lanjutkan stimulasi dan pendampingan positif bersama ananda di rumah."}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* FOTO DOKUMENTASI AKTIVITAS */}
+                                                {lap.foto && (
+                                                    <div className="pt-2 border-t border-slate-100">
+                                                        <div className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                                                            <ImageIcon className="w-3.5 h-3.5 text-[#095c51]" />
+                                                            Dokumentasi Kegiatan & Aktivitas Anak
+                                                        </div>
+                                                        <div className="max-w-md rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-1">
+                                                            <img
+                                                                src={lap.foto}
+                                                                alt={`Aktivitas ${activeChild.name}`}
+                                                                className="w-full h-auto max-h-72 object-cover rounded-xl"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -2158,11 +2469,32 @@ export default function PortalOrangTua({
                     {/* TAB: BERKAS KELUARGA */}
                     {activeTab === "family_files" && (
                         <div className="space-y-6">
-                            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xs">
-                                <h1 className="text-xl font-bold text-slate-900">Berkas Keluarga</h1>
-                                <p className="text-xs text-slate-500 mt-1">
-                                    KK dan KTP orang tua dipakai bersama oleh semua anak di akun ini.
-                                </p>
+                            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div>
+                                    <h1 className="text-xl font-bold text-slate-900">Berkas & Data Keluarga</h1>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        KK dan KTP orang tua dipakai bersama oleh semua anak di akun ini.
+                                    </p>
+                                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-1 text-xs text-slate-600">
+                                        <div className="flex items-start gap-2">
+                                            <span className="font-semibold text-slate-800 shrink-0">Alamat Terdaftar:</span>
+                                            <span className="text-slate-700">{keluarga?.alamat || "Belum diisi"}</span>
+                                        </div>
+                                        <div className="flex items-center gap-4 text-[11px] text-slate-500">
+                                            <span>Ayah: <strong className="text-slate-700">{keluarga?.namaAyah || "-"}</strong></span>
+                                            <span>Ibu: <strong className="text-slate-700">{keluarga?.namaIbu || "-"}</strong></span>
+                                            <span>No. HP: <strong className="text-slate-700">{keluarga?.noHp || "-"}</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={bukaModalEditAlamat}
+                                    className="px-4 py-2.5 bg-white border border-teal-200 hover:border-teal-400 text-[#095c51] rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition shadow-xs hover:bg-teal-50 cursor-pointer self-start md:self-center"
+                                >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                    Edit Alamat & Data Keluarga
+                                </button>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2384,13 +2716,28 @@ export default function PortalOrangTua({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Tanggal Lahir *</label>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1">
+                                                Tanggal Lahir * <span className="font-normal text-slate-400 text-[11px]">(Acuan batasan kelompok per 1 Juli)</span>
+                                            </label>
                                             <input
                                                 type="date"
                                                 value={tglLahirAnak}
                                                 onChange={(e) => setTglLahirAnak(e.target.value)}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-[#095c51]/30 focus:outline-none"
                                             />
+                                            {tglLahirAnak ? (
+                                                <div className={`mt-1.5 p-2 rounded-xl text-[11px] font-semibold border ${
+                                                    statusKelayakanCalon?.valid
+                                                        ? 'bg-teal-50 text-[#095c51] border-teal-200'
+                                                        : 'bg-rose-50 text-rose-700 border-rose-200'
+                                                }`}>
+                                                    {statusKelayakanCalon?.pesan}
+                                                </div>
+                                            ) : (
+                                                <div className="mt-1 text-[10.5px] text-slate-400">
+                                                    Ketentuan usia minimal per 1 Juli 2026: KB (min. 3 th / s.d. 1 Juli 2023), TK A (min. 4 th / s.d. 1 Juli 2022), TK B (min. 5 th / s.d. 1 Juli 2021).
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="block text-xs font-semibold text-slate-600 mb-1">Jenis Kelamin *</label>
@@ -2931,20 +3278,71 @@ export default function PortalOrangTua({
                                             onChange={(e) => setTarikNominal(e.target.value)}
                                             placeholder="Contoh: 100000"
                                             className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
+                                            required
                                         />
                                     </div>
+
+                                    {/* Rekening Tujuan Transfer Bank (TF) */}
+                                    <div className="p-3.5 rounded-2xl bg-teal-50/70 border border-teal-100 space-y-3">
+                                        <div className="text-[11px] font-bold text-[#095c51] uppercase tracking-wider">
+                                            Rekening Tujuan Transfer (TF) Orang Tua:
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="col-span-1">
+                                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Bank *</label>
+                                                <select
+                                                    value={tarikNamaBank}
+                                                    onChange={(e) => setTarikNamaBank(e.target.value)}
+                                                    className="w-full px-2.5 py-2 border border-slate-200 rounded-xl text-xs bg-white"
+                                                >
+                                                    <option value="BCA">BCA</option>
+                                                    <option value="BRI">BRI</option>
+                                                    <option value="BNI">BNI</option>
+                                                    <option value="Mandiri">Mandiri</option>
+                                                    <option value="BSI">BSI</option>
+                                                    <option value="DKI">Bank DKI</option>
+                                                    <option value="Jabar">Bank BJB</option>
+                                                    <option value="CIMB">CIMB Niaga</option>
+                                                    <option value="Lainnya">Bank Lainnya</option>
+                                                </select>
+                                            </div>
+                                            <div className="col-span-2">
+                                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nomor Rekening *</label>
+                                                <input
+                                                    type="text"
+                                                    value={tarikNoRekening}
+                                                    onChange={(e) => setTarikNoRekening(e.target.value.replace(/\D/g, ''))}
+                                                    placeholder="Contoh: 5420123456"
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white font-mono"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nama Pemilik Rekening (Atas Nama) *</label>
+                                            <input
+                                                type="text"
+                                                value={tarikNamaPemilik}
+                                                onChange={(e) => setTarikNamaPemilik(e.target.value)}
+                                                placeholder="Nama lengkap sesuai buku tabungan"
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-600 mb-1">Keterangan</label>
+                                        <label className="block text-xs font-semibold text-slate-600 mb-1">Catatan Tambahan (Opsional)</label>
                                         <textarea
                                             value={tarikKeterangan}
                                             onChange={(e) => setTarikKeterangan(e.target.value)}
-                                            placeholder="Contoh: Keperluan sekolah, beli seragam, dll"
+                                            placeholder="Contoh: Keperluan buku, seragam, dll"
                                             rows={2}
                                             className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
                                         />
                                     </div>
-                                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-                                        <strong>Catatan:</strong> Penarikan tabungan memerlukan verifikasi Bendahara. Uang tunai dapat diambil di kantor Bendahara setelah disetujui.
+                                    <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs text-[#095c51]">
+                                        <strong>Informasi Penarikan:</strong> Penarikan tabungan dikirim lewat <strong>Transfer Bank (TF)</strong>. Bendahara akan mentransfer uang ke nomor rekening orang tua di atas setelah diverifikasi.
                                     </div>
                                     <div className="flex gap-2">
                                         <button
@@ -2966,6 +3364,110 @@ export default function PortalOrangTua({
                             </div>
                         </div>
                     )}
+                    {/* Modal Edit Alamat & Data Keluarga */}
+                    {showEditAlamatModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                            <div className="bg-white rounded-3xl p-6 sm:p-7 w-full max-w-lg shadow-2xl space-y-4">
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-2 rounded-xl bg-teal-50 text-[#095c51]">
+                                            <Pencil className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-base font-bold text-slate-800">Edit Alamat & Data Keluarga</h3>
+                                            <p className="text-xs text-slate-400">Perbarui alamat terdaftar dan informasi kontak keluarga</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEditAlamatModal(false)}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3.5">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                            Alamat Tempat Tinggal Terdaftar *
+                                        </label>
+                                        <textarea
+                                            value={editAlamatInput}
+                                            onChange={(e) => setEditAlamatInput(e.target.value)}
+                                            rows={3}
+                                            placeholder="Contoh: Jl. KS. Tubun RT. 03/04 Kel. Pasar Baru Kec. Karawaci Kota Tangerang"
+                                            className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] focus:ring-1 focus:ring-[#095c51] outline-none"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Nama Ayah / Wali
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={editNamaAyah}
+                                                onChange={(e) => setEditNamaAyah(e.target.value)}
+                                                placeholder="Nama lengkap Ayah"
+                                                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] focus:ring-1 focus:ring-[#095c51] outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Nama Ibu / Wali
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={editNamaIbu}
+                                                onChange={(e) => setEditNamaIbu(e.target.value)}
+                                                placeholder="Nama lengkap Ibu"
+                                                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] focus:ring-1 focus:ring-[#095c51] outline-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                            Nomor Telepon / WhatsApp
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editNoHp}
+                                            onChange={(e) => setEditNoHp(e.target.value)}
+                                            placeholder="08xxxxxxxxxx"
+                                            className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] focus:ring-1 focus:ring-[#095c51] outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2.5 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEditAlamatModal(false)}
+                                        className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={savingAlamat}
+                                        onClick={handleSimpanEditAlamat}
+                                        className="flex-1 px-4 py-2.5 rounded-xl bg-[#095c51] hover:bg-[#074840] text-white text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                                    >
+                                        {savingAlamat ? "Menyimpan..." : "Simpan Perubahan"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal Kuitansi Digital Resmi (PDF) */}
+                    <KuitansiDigitalModal
+                        data={kuitansiAktif}
+                        onClose={() => setKuitansiAktif(null)}
+                    />
                 </main>
             </div>
         </div>

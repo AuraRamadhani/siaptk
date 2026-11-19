@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { FileText, Image as ImageIcon, Plus, Trash2, Upload, CheckCircle2 } from 'lucide-react';
-import { tentukanKelompokDariTglLahir } from '@/lib/usia';
+import { cekKelayakanTanggalLahir } from '@/lib/usia';
 import { useToast } from '@/components/Toast';
 
 type AnakForm = {
@@ -32,7 +32,6 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
     namaIbu: '',
     noHp: '',
     email: '',
-    alamat: '',
   });
   const [anak, setAnak] = useState<AnakForm[]>([{ ...kosong }]);
   const [pesan, setPesan] = useState('');
@@ -60,6 +59,11 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
         toast.warning(`NIK anak ke-${i + 1} harus tepat 16 digit angka.`);
         return;
       }
+      const kelayakan = cekKelayakanTanggalLahir(a.tglLahir);
+      if (!kelayakan.valid) {
+        toast.warning(`Anak ke-${i + 1}: ${kelayakan.pesan}`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -71,7 +75,6 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
       fd.append('namaIbu', keluarga.namaIbu.trim());
       fd.append('noHp', keluarga.noHp.trim());
       fd.append('email', keluarga.email.trim());
-      fd.append('alamat', keluarga.alamat.trim());
       fd.append('anakCount', String(anak.length));
 
       anak.forEach((a, idx) => {
@@ -92,7 +95,7 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
       if (res.success) {
         toast.success(res.message || 'Pendaftaran onsite berhasil disimpan.');
         setPesan(res.message);
-        setKeluarga({ namaAyah: '', namaIbu: '', noHp: '', email: '', alamat: '' });
+        setKeluarga({ namaAyah: '', namaIbu: '', noHp: '', email: '' });
         setAnak([{ ...kosong }]);
         onSukses?.();
       } else {
@@ -173,15 +176,6 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-[#095c51]"
             />
           </label>
-          <label className="text-xs space-y-1 md:col-span-2 block">
-            <span className="font-semibold text-slate-600">Alamat Tempat Tinggal</span>
-            <input
-              value={keluarga.alamat}
-              onChange={(e) => setKeluarga({ ...keluarga, alamat: e.target.value })}
-              placeholder="Alamat lengkap domisili"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-[#095c51]"
-            />
-          </label>
         </div>
       </div>
 
@@ -202,7 +196,6 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
         </div>
 
         {anak.map((a, i) => {
-          const infoKelompok = a.tglLahir ? tentukanKelompokDariTglLahir(a.tglLahir) : null;
           return (
             <div
               key={i}
@@ -275,22 +268,21 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
                 </label>
               </div>
 
-              {a.tglLahir && (
-                <div
-                  className={`text-[11px] px-3.5 py-2 rounded-xl font-semibold flex items-center gap-1.5 ${
-                    infoKelompok
-                      ? 'bg-teal-50 text-[#095c51] border border-teal-200'
-                      : 'bg-amber-50 text-amber-800 border border-amber-200'
-                  }`}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>
-                    {infoKelompok
-                      ? `Kelompok Otomatis: ${infoKelompok.labelLengkap} (Usia ${infoKelompok.usia} tahun)`
-                      : 'Usia di luar rentang standar KB/TK (3-6 tahun)'}
-                  </span>
-                </div>
-              )}
+              {a.tglLahir && (() => {
+                const kelayakan = cekKelayakanTanggalLahir(a.tglLahir);
+                return (
+                  <div
+                    className={`text-[11px] px-3.5 py-2 rounded-xl font-semibold flex items-center gap-1.5 ${
+                      kelayakan.valid
+                        ? 'bg-teal-50 text-[#095c51] border border-teal-200'
+                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>{kelayakan.pesan}</span>
+                  </div>
+                );
+              })()}
 
               {/* Upload Berkas Persyaratan Anak */}
               <div className="pt-2 border-t border-slate-200/60 space-y-2">

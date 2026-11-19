@@ -44,7 +44,10 @@ export async function GET(request: Request) {
       diskon: Number(t.diskon),
     }));
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(
+      { success: true, data },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });

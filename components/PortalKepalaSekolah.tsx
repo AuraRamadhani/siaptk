@@ -88,8 +88,8 @@ export default function PortalKepalaSekolah() {
     setLoading(true);
     try {
       const [d, p] = await Promise.all([
-        fetch('/api/dashboard').then((x) => x.json()),
-        fetch('/api/pendaftaran').then((x) => x.json()),
+        fetch('/api/dashboard', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/pendaftaran', { cache: 'no-store' }).then((x) => x.json()),
       ]);
       setData(d.data || null);
       setPendaftar(p.data || []);

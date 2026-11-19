@@ -9,18 +9,30 @@ if (!connectionString) {
 
 const databaseUrl = new URL(connectionString);
 
-const adapter = new PrismaMariaDb({
-  host: databaseUrl.hostname,
-  port: Number(databaseUrl.port || 3306),
-  user: decodeURIComponent(databaseUrl.username),
-  password: decodeURIComponent(databaseUrl.password),
-  database: databaseUrl.pathname.replace(/^\//, ""),
-  connectionLimit: 5,
-});
+const PRISMA_VERSION = "2026-11-19-v3";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  adapter: PrismaMariaDb | undefined;
+  version: string | undefined;
 };
+
+if (globalForPrisma.version !== PRISMA_VERSION) {
+  globalForPrisma.prisma = undefined;
+  globalForPrisma.adapter = undefined;
+  globalForPrisma.version = PRISMA_VERSION;
+}
+
+const adapter =
+  globalForPrisma.adapter ??
+  new PrismaMariaDb({
+    host: databaseUrl.hostname,
+    port: Number(databaseUrl.port || 3306),
+    user: decodeURIComponent(databaseUrl.username),
+    password: decodeURIComponent(databaseUrl.password),
+    database: databaseUrl.pathname.replace(/^\//, ""),
+    connectionLimit: 10,
+  });
 
 export const prisma =
   globalForPrisma.prisma ??
@@ -46,4 +58,5 @@ export const KELUARGA_AMAN = {
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+  globalForPrisma.adapter = adapter;
 }

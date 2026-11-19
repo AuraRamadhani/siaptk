@@ -18,11 +18,15 @@ import {
   BarChart3,
   RefreshCw,
   Coins,
+  CreditCard,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import PanelJadwal from '@/components/PanelJadwal';
 import PanelPendaftaranAdmin from '@/components/PanelPendaftaranAdmin';
 import { useToast } from '@/components/Toast';
 import KuitansiDigitalModal, { DataKuitansi } from '@/components/KuitansiDigitalModal';
+import { NAMA_BULAN } from '@/lib/tagihan';
 
 type Trx = {
   idTransaksi: string;
@@ -40,7 +44,30 @@ type Trx = {
 type Rekening = {
   idTabungan: string;
   saldo: string | number;
-  anak: { idAnak: string; nama: string; status: string };
+  anak: {
+    idAnak: string;
+    nama: string;
+    kelompok?: string | null;
+    status?: string;
+    keluarga?: {
+      namaAyah: string | null;
+      namaIbu: string | null;
+      noHp?: string | null;
+    } | null;
+  };
+  transaksi?: {
+    idTransaksi: string;
+    jenis: string;
+    nominal: number | string;
+    status: string;
+    createdAt: string;
+  }[];
+  penarikan?: {
+    idPenarikan: string;
+    nominal: number | string;
+    status: string;
+    createdAt: string;
+  }[];
 };
 
 type TagihanPending = {
@@ -50,7 +77,7 @@ type TagihanPending = {
   nominal: number;
   diskon: number;
   status: string;
-  anak?: { nama: string; keluarga?: { namaAyah: string | null; namaIbu: string | null } };
+  anak?: { nama: string; kelompok?: string | null; keluarga?: { namaAyah: string | null; namaIbu: string | null } };
   pembayaran?: { idPembayaran: string; metode: string; buktiTransfer: string | null; diverifikasiOleh?: string | null; catatanVerifikasi?: string | null }[];
 };
 
@@ -58,11 +85,25 @@ type PenarikanPending = {
   idPenarikan: string;
   nominal: number;
   keterangan: string | null;
+  buktiTransfer?: string | null;
   status: string;
   catatanPenolakan?: string | null;
   diajukanOleh: string;
+  diverifikasiOleh?: string | null;
   createdAt: string;
-  tabungan?: { anak?: { nama: string; keluarga?: { namaAyah: string | null; namaIbu: string | null } } };
+  tabungan?: {
+    idTabungan?: string;
+    saldo?: number | string;
+    anak?: {
+      idAnak?: string;
+      nama: string;
+      kelompok?: string | null;
+      keluarga?: {
+        namaAyah: string | null;
+        namaIbu: string | null;
+      };
+    };
+  };
 };
 
 const rp = (n: number) => `Rp${Number(n || 0).toLocaleString('id-ID')}`;
@@ -84,9 +125,10 @@ type TabBendahara =
   | 'penarikan'
   | 'jadwal'
   | 'onsite'
-  | 'riwayat'
-  | 'tarif_spp'
   | 'tunai'
+  | 'rekening_bank'
+  | 'tarif_spp'
+  | 'riwayat'
   | 'rekonsiliasi';
 
 const TAB_BENDAHARA_CONFIG: {
@@ -133,10 +175,17 @@ const TAB_BENDAHARA_CONFIG: {
   },
   {
     id: 'tunai',
-    label: 'Setoran Tunai Langsung',
+    label: 'Setoran / Bayar Tunai',
     icon: CircleDollarSign,
-    title: 'Pencatatan Setoran Tunai Langsung',
-    desc: 'Input setoran tabungan tunai bagi orang tua siswa yang datang langsung ke sekolah.',
+    title: 'Pencatatan Pembayaran & Setoran Tunai Langsung',
+    desc: 'Input setoran tabungan, pembayaran SPP bulanan, atau biaya pendaftaran tunai bagi orang tua yang datang ke sekolah.',
+  },
+  {
+    id: 'rekening_bank',
+    label: 'Rekening Transfer',
+    icon: CreditCard,
+    title: 'Tujuan Transfer Resmi (TK Islam Nur Habib)',
+    desc: 'Kelola nomor rekening bank resmi sekolah (BSI, BCA, Mandiri) untuk pembayaran transfer orang tua.',
   },
   {
     id: 'tarif_spp',
@@ -161,13 +210,18 @@ const TAB_BENDAHARA_CONFIG: {
   },
 ];
 
-export default function PortalBendahara() {
+interface PortalBendaharaProps {
+  namaBendahara?: string;
+}
+
+export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps = {}) {
   const { toast } = useToast();
   const [tab, setTab] = useState<TabBendahara>('verifikasi');
   const [antrean, setAntrean] = useState<Trx[]>([]);
   const [tagihanPending, setTagihanPending] = useState<TagihanPending[]>([]);
   const [tagihanLunas, setTagihanLunas] = useState<TagihanPending[]>([]);
   const [penarikanPending, setPenarikanPending] = useState<PenarikanPending[]>([]);
+  const [penarikanSelesai, setPenarikanSelesai] = useState<PenarikanPending[]>([]);
   const [terverifikasi, setTerverifikasi] = useState<Trx[]>([]);
   const [rekening, setRekening] = useState<Rekening[]>([]);
   const [loading, setLoading] = useState(true);
@@ -178,23 +232,41 @@ export default function PortalBendahara() {
   const [previewBukti, setPreviewBukti] = useState<{ label: string; url: string } | null>(null);
   const [showCatatanModal, setShowCatatanModal] = useState<{ tipe: 'tolak'; id: string; label: string } | null>(null);
   const [catatanTolak, setCatatanTolak] = useState('');
+  const [modalVerifikasiPenarikan, setModalVerifikasiPenarikan] = useState<PenarikanPending | null>(null);
+  const [fileBuktiTransfer, setFileBuktiTransfer] = useState<File | null>(null);
+  const [catatanVerifikasiPenarikan, setCatatanVerifikasiPenarikan] = useState<string>('');
+  const [prosesVerifikasiLoading, setProsesVerifikasiLoading] = useState<boolean>(false);
   const [tarifSpp, setTarifSpp] = useState<number>(350000);
   const [inputTarifSpp, setInputTarifSpp] = useState<string>('350000');
   const [bulanGenerate, setBulanGenerate] = useState<number>(new Date().getMonth() + 1);
   const [loadingTarif, setLoadingTarif] = useState<boolean>(false);
   const [kuitansiAktif, setKuitansiAktif] = useState<DataKuitansi | null>(null);
 
+  // State untuk Pencatatan Transaksi Tunai Langsung (SPP, Tabungan, Pendaftaran)
+  const [tunaiKategori, setTunaiKategori] = useState<'TABUNGAN' | 'SPP' | 'PENDAFTARAN'>('SPP');
+  const [daftarSiswaTunai, setDaftarSiswaTunai] = useState<any[]>([]);
+  const [selectedTagihanSppId, setSelectedTagihanSppId] = useState<string>('');
+  const [bulanSppTunai, setBulanSppTunai] = useState<number>(new Date().getMonth() + 1);
+  const [loadingTunai, setLoadingTunai] = useState<boolean>(false);
+
+  // State untuk Pengaturan Tujuan Transfer Resmi (BSI, BCA, Mandiri)
+  const [rekeningList, setRekeningList] = useState<{ id: string; bank: string; nomorRekening: string; atasNama: string }[]>([]);
+  const [loadingRekening, setLoadingRekening] = useState<boolean>(false);
+
   const muat = async () => {
     setLoading(true);
     try {
-      const [a, v, r, tg, tgLunas, p, sppRes] = await Promise.all([
-        fetch('/api/tabungan?status=MENUNGGU').then((x) => x.json()),
-        fetch('/api/tabungan?status=DIVERIFIKASI').then((x) => x.json()),
-        fetch('/api/tabungan').then((x) => x.json()),
-        fetch('/api/tagihan?status=MENUNGGU_VERIFIKASI').then((x) => x.json()),
-        fetch('/api/tagihan?status=LUNAS').then((x) => x.json()),
-        fetch('/api/penarikan-tabungan?status=MENUNGGU').then((x) => x.json()),
-        fetch('/api/pengaturan/tarif-spp').then((x) => x.json()).catch(() => ({})),
+      const [a, v, r, tg, tgLunas, p, pLunas, sppRes, tunaiRes, rekRes] = await Promise.all([
+        fetch('/api/tabungan?status=MENUNGGU', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/tabungan?status=DIVERIFIKASI', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/tabungan', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/tagihan?status=MENUNGGU_VERIFIKASI', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/tagihan?status=LUNAS', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/penarikan-tabungan?status=MENUNGGU', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/penarikan-tabungan?status=DIVERIFIKASI', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/pengaturan/tarif-spp', { cache: 'no-store' }).then((x) => x.json()).catch(() => ({})),
+        fetch('/api/bendahara/transaksi-tunai', { cache: 'no-store' }).then((x) => x.json()).catch(() => ({})),
+        fetch('/api/pengaturan/rekening', { cache: 'no-store' }).then((x) => x.json()).catch(() => ({})),
       ]);
       setAntrean(a.data || []);
       setTerverifikasi(v.data || []);
@@ -202,9 +274,16 @@ export default function PortalBendahara() {
       setTagihanPending(tg.data || []);
       setTagihanLunas(tgLunas.data || []);
       setPenarikanPending(p.data || []);
+      setPenarikanSelesai(pLunas.data || []);
       if (sppRes?.success && sppRes.data?.tarif) {
         setTarifSpp(sppRes.data.tarif);
         setInputTarifSpp(String(sppRes.data.tarif));
+      }
+      if (tunaiRes?.success && Array.isArray(tunaiRes.data)) {
+        setDaftarSiswaTunai(tunaiRes.data);
+      }
+      if (rekRes?.success && Array.isArray(rekRes.data)) {
+        setRekeningList(rekRes.data);
       }
     } catch {
       setPesan('Gagal memuat data.');
@@ -261,25 +340,141 @@ export default function PortalBendahara() {
     }
   };
 
-  const simpanTunai = async (e: React.FormEvent) => {
+  const submitVerifikasiPenarikan = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/tabungan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        idAnak,
-        jenis: 'SETOR',
-        metode: 'TUNAI',
-        nominal: Number(nominal),
-        keterangan: keterangan || 'Setoran tunai di kantor',
-        dicatatOleh: 'Bendahara',
-      }),
-    }).then((x) => x.json());
-    setPesan(res.success ? res.message : res.error);
-    if (res.success) {
-      setNominal('');
-      setKeterangan('');
-      muat();
+    if (!modalVerifikasiPenarikan) return;
+
+    setProsesVerifikasiLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('idPenarikan', modalVerifikasiPenarikan.idPenarikan);
+      formData.append('aksi', 'verifikasi');
+      if (catatanVerifikasiPenarikan) {
+        formData.append('catatanVerifikasi', catatanVerifikasiPenarikan);
+      }
+      if (fileBuktiTransfer) {
+        formData.append('buktiTransfer', fileBuktiTransfer);
+      }
+
+      const res = await fetch('/api/penarikan-tabungan', {
+        method: 'PATCH',
+        body: formData,
+      }).then((x) => x.json());
+
+      if (res.success) {
+        toast.success(res.message || 'Penarikan tabungan berhasil diverifikasi.');
+        setModalVerifikasiPenarikan(null);
+        setFileBuktiTransfer(null);
+        setCatatanVerifikasiPenarikan('');
+        muat();
+      } else {
+        toast.error(res.error || 'Gagal memverifikasi penarikan.');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan saat memproses verifikasi penarikan.');
+    } finally {
+      setProsesVerifikasiLoading(false);
+    }
+  };
+
+  const handleSimpanTransaksiTunai = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!idAnak) {
+      toast.warning('Silakan pilih siswa terlebih dahulu.');
+      return;
+    }
+    const nom = Number(nominal);
+    if (!nom || nom <= 0) {
+      toast.warning('Nominal transaksi harus lebih dari 0.');
+      return;
+    }
+
+    setLoadingTunai(true);
+    try {
+      const res = await fetch('/api/bendahara/transaksi-tunai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idAnak,
+          kategori: tunaiKategori,
+          nominal: nom,
+          idTagihan: selectedTagihanSppId || undefined,
+          bulanSpp: bulanSppTunai,
+          keterangan: keterangan || undefined,
+        }),
+      }).then((x) => x.json());
+
+      if (res.success) {
+        toast.success(res.message || 'Transaksi tunai berhasil disimpan.');
+        setPesan(res.message);
+        setNominal('');
+        setKeterangan('');
+        setSelectedTagihanSppId('');
+        muat();
+      } else {
+        toast.error(res.error || 'Gagal menyimpan transaksi tunai.');
+        setPesan(res.error);
+      }
+    } catch {
+      toast.error('Terjadi kesalahan saat memproses transaksi tunai.');
+      setPesan('Terjadi kesalahan.');
+    } finally {
+      setLoadingTunai(false);
+    }
+  };
+
+  const ubahRekeningBank = (index: number, field: 'bank' | 'nomorRekening' | 'atasNama', value: string) => {
+    setRekeningList((prev) =>
+      prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
+    );
+  };
+
+  const tambahRekeningBank = () => {
+    setRekeningList((prev) => [
+      ...prev,
+      {
+        id: String(Date.now()),
+        bank: '',
+        nomorRekening: '',
+        atasNama: 'TK Islam Nur Habib',
+      },
+    ]);
+  };
+
+  const hapusRekeningBank = (index: number) => {
+    if (rekeningList.length <= 1) {
+      toast.warning('Minimal harus ada 1 rekening tujuan transfer.');
+      return;
+    }
+    setRekeningList((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSimpanRekeningBank = async () => {
+    for (const r of rekeningList) {
+      if (!r.bank.trim() || !r.nomorRekening.trim() || !r.atasNama.trim()) {
+        toast.warning('Semua field nama bank, nomor rekening, dan atas nama wajib diisi.');
+        return;
+      }
+    }
+
+    setLoadingRekening(true);
+    try {
+      const res = await fetch('/api/pengaturan/rekening', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rekening: rekeningList }),
+      }).then((x) => x.json());
+
+      if (res.success) {
+        toast.success(res.message || 'Pengaturan rekening tujuan transfer berhasil disimpan.');
+        setPesan(res.message);
+      } else {
+        toast.error(res.error || 'Gagal menyimpan rekening.');
+      }
+    } catch {
+      toast.error('Terjadi kesalahan saat menyimpan rekening.');
+    } finally {
+      setLoadingRekening(false);
     }
   };
 
@@ -372,7 +567,7 @@ export default function PortalBendahara() {
               if (t.id === 'verifikasi' && antrean.length > 0) badge = antrean.length;
               if (t.id === 'tagihan' && tagihanPending.length > 0) badge = tagihanPending.length;
               if (t.id === 'penarikan' && penarikanPending.length > 0) badge = penarikanPending.length;
-              if (t.id === 'riwayat') badge = tagihanLunas.length + terverifikasi.length;
+              if (t.id === 'riwayat') badge = tagihanLunas.length + terverifikasi.length + penarikanSelesai.length;
 
               return (
                 <button
@@ -659,10 +854,14 @@ export default function PortalBendahara() {
                       <td className="px-3 py-3 text-slate-500">{tgl(p.createdAt)}</td>
                       <td className="px-6 py-3 text-right space-x-2">
                         <button
-                          onClick={() => prosesVerifikasi('penarikan', p.idPenarikan, 'verifikasi')}
+                          onClick={() => {
+                            setModalVerifikasiPenarikan(p);
+                            setFileBuktiTransfer(null);
+                            setCatatanVerifikasiPenarikan('');
+                          }}
                           className="px-3 py-1.5 rounded-lg bg-[#095c51] text-white font-bold cursor-pointer"
                         >
-                          Verifikasi
+                          Verifikasi & Upload Bukti
                         </button>
                         <button
                           onClick={() => bukaCatatanTolak('penarikan', p.idPenarikan, `Penarikan ${p.tabungan?.anak?.nama}`)}
@@ -689,6 +888,132 @@ export default function PortalBendahara() {
       {/* TAB: RIWAYAT TERVERIFIKASI */}
       {tab === 'riwayat' && (
         <div className="space-y-6">
+          {/* STATISTIK RINGKASAN SINKRONISASI KEBERLANJUTAN */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-teal-50 border border-teal-100 flex items-center justify-center text-[#095c51] shrink-0">
+                <Receipt className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tagihan Lunas</p>
+                <h3 className="text-xl font-black text-slate-900 truncate">
+                  {tagihanLunas.length} Tagihan
+                </h3>
+                <p className="text-[11px] text-emerald-600 font-bold truncate">
+                  {rp(tagihanLunas.reduce((acc, tg) => acc + (Number(tg.nominal) - Number(tg.diskon || 0)), 0))}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                <Coins className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Saldo Tabungan Siswa</p>
+                <h3 className="text-xl font-black text-emerald-700 truncate">{rp(totalSaldo)}</h3>
+                <p className="text-[11px] text-slate-500 font-medium truncate">{rekening.length} Rekening Aktif</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                <Banknote className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Penarikan Disetujui</p>
+                <h3 className="text-xl font-black text-slate-900 truncate">{penarikanSelesai.length} Penarikan</h3>
+                <p className="text-[11px] text-red-600 font-bold truncate">
+                  {rp(penarikanSelesai.reduce((acc, p) => acc + Number(p.nominal), 0))}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* SINKRONISASI SALDO TABUNGAN PER SISWA */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-[#095c51]" />
+                  <span>Daftar Saldo Tabungan Siswa (Sinkron Realtime)</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Saldo rekening tabungan otomatis tersinkron dengan setoran terverifikasi dan penarikan yang telah disetujui.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={muat}
+                disabled={loading}
+                className="text-xs font-semibold text-[#095c51] hover:underline cursor-pointer flex items-center gap-1"
+              >
+                <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                <span>Muat Ulang</span>
+              </button>
+            </div>
+            {rekening.length === 0 ? (
+              <div className="p-6 text-xs text-slate-500">Belum ada rekening tabungan siswa terdaftar.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="text-left px-6 py-3 font-semibold">Nama Siswa</th>
+                      <th className="text-left px-3 py-3 font-semibold">Kelompok / Kelas</th>
+                      <th className="text-left px-3 py-3 font-semibold">Orang Tua / Wali</th>
+                      <th className="text-right px-3 py-3 font-semibold">Setoran Terverifikasi</th>
+                      <th className="text-right px-3 py-3 font-semibold">Penarikan Disetujui</th>
+                      <th className="text-right px-6 py-3 font-semibold">Saldo Akhir</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rekening.map((r) => {
+                      const totalSetor = (r.transaksi || [])
+                        .filter((tx) => tx.jenis === 'SETOR')
+                        .reduce((acc, tx) => acc + Number(tx.nominal), 0);
+                      const totalTarik = (r.penarikan || [])
+                        .reduce((acc, px) => acc + Number(px.nominal), 0);
+
+                      return (
+                        <tr key={r.idTabungan} className="border-t border-slate-100 hover:bg-slate-50/50 transition">
+                          <td className="px-6 py-3 font-bold text-slate-900">
+                            {r.anak.nama}
+                            <span className="block text-[10px] font-normal text-slate-400">
+                              ID: {r.idTabungan.slice(0, 8)}...
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[10px]">
+                              {r.anak.kelompok || 'Belum Ada'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">
+                            {r.anak.keluarga?.namaAyah || r.anak.keluarga?.namaIbu || '—'}
+                            {r.anak.keluarga?.noHp && (
+                              <span className="block text-[10px] text-slate-400">{r.anak.keluarga.noHp}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right font-semibold text-emerald-600">
+                            {totalSetor > 0 ? `+ ${rp(totalSetor)}` : '—'}
+                          </td>
+                          <td className="px-3 py-3 text-right font-semibold text-red-600">
+                            {totalTarik > 0 ? `- ${rp(totalTarik)}` : '—'}
+                          </td>
+                          <td className="px-6 py-3 text-right font-black text-slate-900 text-sm">
+                            <span className="inline-block px-2.5 py-1 rounded-xl bg-teal-50 border border-teal-200 text-[#095c51]">
+                              {rp(Number(r.saldo))}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* History Pembayaran Tagihan Terverifikasi / Lunas */}
           <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
@@ -696,7 +1021,7 @@ export default function PortalBendahara() {
                 <h2 className="text-sm font-bold text-slate-900">History Pembayaran Tagihan Terverifikasi (Lunas)</h2>
                 <p className="text-xs text-slate-500 mt-0.5">{tagihanLunas.length} pembayaran tagihan sudah lunas.</p>
               </div>
-              <button onClick={muat} className="text-xs font-semibold text-[#095c51] cursor-pointer">
+              <button onClick={muat} className="text-xs font-semibold text-[#095c51] hover:underline cursor-pointer">
                 Muat ulang
               </button>
             </div>
@@ -713,14 +1038,14 @@ export default function PortalBendahara() {
                       <th className="text-left px-3 py-3 font-semibold">Metode</th>
                       <th className="text-left px-3 py-3 font-semibold">Diverifikasi Oleh</th>
                       <th className="text-left px-3 py-3 font-semibold">Bukti</th>
-                      <th className="text-right px-6 py-3 font-semibold">Status</th>
+                      <th className="text-right px-6 py-3 font-semibold">Status & Kuitansi</th>
                     </tr>
                   </thead>
                   <tbody>
                     {tagihanLunas.map((tg) => {
                       const bayar = tg.pembayaran?.[tg.pembayaran.length - 1];
                       return (
-                        <tr key={tg.idTagihan} className="border-t border-slate-100">
+                        <tr key={tg.idTagihan} className="border-t border-slate-100 hover:bg-slate-50/50 transition">
                           <td className="px-6 py-3 font-semibold text-slate-900">
                             {tg.anak?.nama || '-'}
                             <span className="block text-[10px] font-normal text-slate-400">
@@ -777,6 +1102,7 @@ export default function PortalBendahara() {
                                   metodePembayaran: bayar?.metode || 'Transfer Bank (TF)',
                                   status: 'LUNAS',
                                   keterangan: 'Pembayaran telah diverifikasi lunas oleh Bendahara.',
+                                  namaBendahara: namaBendahara || bayar?.diverifikasiOleh || 'Bendahara',
                                 })
                               }
                               className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#095c51] font-bold text-[10px] inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
@@ -797,9 +1123,14 @@ export default function PortalBendahara() {
 
           {/* History Transaksi Tabungan Terverifikasi */}
           <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100">
-              <h2 className="text-sm font-bold text-slate-900">History Transaksi Tabungan Terverifikasi</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{terverifikasi.length} transaksi tabungan terverifikasi.</p>
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">History Transaksi Tabungan Terverifikasi</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{terverifikasi.length} transaksi tabungan terverifikasi.</p>
+              </div>
+              <button onClick={muat} className="text-xs font-semibold text-[#095c51] hover:underline cursor-pointer">
+                Muat ulang
+              </button>
             </div>
             {terverifikasi.length === 0 ? (
               <div className="p-6 text-xs text-slate-500">Belum ada transaksi tabungan terverifikasi.</div>
@@ -813,41 +1144,82 @@ export default function PortalBendahara() {
                       <th className="text-right px-3 py-3 font-semibold">Nominal</th>
                       <th className="text-left px-3 py-3 font-semibold">Dicatat / Verifikasi</th>
                       <th className="text-left px-3 py-3 font-semibold">Bukti</th>
-                      <th className="text-right px-6 py-3 font-semibold">Waktu</th>
+                      <th className="text-left px-3 py-3 font-semibold">Waktu</th>
+                      <th className="text-right px-6 py-3 font-semibold">Kuitansi</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {terverifikasi.map((t) => (
-                      <tr key={t.idTransaksi} className="border-t border-slate-100">
-                        <td className="px-6 py-3 font-semibold text-slate-900">{t.tabungan?.anak?.nama || '-'}</td>
-                        <td className="px-3 py-3 text-slate-600">
-                          <span className="font-semibold">{LABEL[t.jenis]} · {t.metode}</span>
-                          {t.keterangan && <span className="block text-[11px] text-slate-400">{t.keterangan}</span>}
-                        </td>
-                        <td className="px-3 py-3 text-right font-bold text-emerald-700">{rp(Number(t.nominal))}</td>
-                        <td className="px-3 py-3 text-slate-600">{t.dicatatOleh || 'Bendahara'}</td>
-                        <td className="px-3 py-3">
-                          {t.bukti ? (
+                    {terverifikasi.map((t) => {
+                      const isTarik = t.jenis === 'TARIK';
+                      return (
+                        <tr key={t.idTransaksi} className="border-t border-slate-100 hover:bg-slate-50/50 transition">
+                          <td className="px-6 py-3 font-semibold text-slate-900">
+                            {t.tabungan?.anak?.nama || '-'}
+                            <span className="block text-[10px] font-normal text-slate-400">
+                              {t.tabungan?.anak?.keluarga?.namaAyah || t.tabungan?.anak?.keluarga?.namaIbu || ''}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">
+                            <span className="font-semibold">{LABEL[t.jenis] || t.jenis} · {t.metode}</span>
+                            {t.keterangan && <span className="block text-[11px] text-slate-400">{t.keterangan}</span>}
+                          </td>
+                          <td
+                            className={`px-3 py-3 text-right font-black ${
+                              isTarik ? 'text-red-600' : 'text-emerald-700'
+                            }`}
+                          >
+                            {isTarik ? `- ${rp(Number(t.nominal))}` : `+ ${rp(Number(t.nominal))}`}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">{t.dicatatOleh || 'Bendahara'}</td>
+                          <td className="px-3 py-3">
+                            {t.bukti ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPreviewBukti({
+                                    label: `Bukti Tabungan - ${t.tabungan?.anak?.nama || ''}`,
+                                    url: keUrlBerkas(t.bukti!),
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 text-[#095c51] font-semibold hover:underline cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Lihat</span>
+                              </button>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{tgl(t.createdAt)}</td>
+                          <td className="px-6 py-3 text-right">
                             <button
                               type="button"
                               onClick={() =>
-                                setPreviewBukti({
-                                  label: `Bukti Tabungan - ${t.tabungan?.anak?.nama || ''}`,
-                                  url: keUrlBerkas(t.bukti!),
+                                setKuitansiAktif({
+                                  noKuitansi: `KWT-TBG/${new Date(t.createdAt).getFullYear()}/${t.idTransaksi.slice(-6).toUpperCase()}`,
+                                  tanggal: new Date(t.createdAt).toLocaleDateString('id-ID', { dateStyle: 'long' }),
+                                  namaSiswa: t.tabungan?.anak?.nama || 'Siswa',
+                                  kelompok: null,
+                                  namaWali: t.tabungan?.anak?.keluarga?.namaAyah || t.tabungan?.anak?.keluarga?.namaIbu || null,
+                                  jenisPembayaran: t.jenis === 'SETOR' ? 'Setoran Tabungan Siswa' : 'Penarikan Tabungan Siswa',
+                                  periode: null,
+                                  nominal: Number(t.nominal),
+                                  metodePembayaran: `${t.metode} (${LABEL[t.jenis] || t.jenis})`,
+                                  status: 'LUNAS',
+                                  keterangan: t.keterangan || (t.jenis === 'SETOR' ? 'Setoran tabungan telah diverifikasi bendahara.' : 'Penarikan tabungan telah disetujui bendahara.'),
+                                  namaBendahara: namaBendahara || t.dicatatOleh || 'Bendahara',
                                 })
                               }
-                              className="inline-flex items-center gap-1 text-[#095c51] font-semibold hover:underline cursor-pointer"
+                              className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#095c51] font-bold text-[10px] inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
+                              title="Cetak Kuitansi Digital PDF"
                             >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>Lihat</span>
+                              <FileDown className="w-3 h-3" />
+                              <span>Kuitansi PDF</span>
                             </button>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-3 text-right text-slate-500">{tgl(t.createdAt)}</td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -856,10 +1228,106 @@ export default function PortalBendahara() {
 
           {/* History Penarikan Terverifikasi */}
           <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100">
-              <h2 className="text-sm font-bold text-slate-900">History Penarikan Tabungan Terverifikasi</h2>
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">History Penarikan Tabungan Terverifikasi</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{penarikanSelesai.length} pengajuan penarikan telah disetujui.</p>
+              </div>
+              <button onClick={muat} className="text-xs font-semibold text-[#095c51] hover:underline cursor-pointer">
+                Muat ulang
+              </button>
             </div>
-            <div className="p-6 text-xs text-slate-500">Belum ada history penarikan terverifikasi (akan muncul setelah verifikasi).</div>
+            {penarikanSelesai.length === 0 ? (
+              <div className="p-6 text-xs text-slate-500">Belum ada history penarikan tabungan yang diverifikasi.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="text-left px-6 py-3 font-semibold">Siswa & Orang Tua</th>
+                      <th className="text-right px-3 py-3 font-semibold">Nominal Ditarik</th>
+                      <th className="text-left px-3 py-3 font-semibold">Keterangan</th>
+                      <th className="text-left px-3 py-3 font-semibold">Diajukan Oleh</th>
+                      <th className="text-left px-3 py-3 font-semibold">Diverifikasi Oleh</th>
+                      <th className="text-left px-3 py-3 font-semibold">Bukti Transfer</th>
+                      <th className="text-left px-3 py-3 font-semibold">Waktu</th>
+                      <th className="text-right px-6 py-3 font-semibold">Status & Kuitansi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {penarikanSelesai.map((p) => {
+                      const namaSiswa = p.tabungan?.anak?.nama || 'Siswa';
+                      const namaWali = p.tabungan?.anak?.keluarga?.namaAyah || p.tabungan?.anak?.keluarga?.namaIbu || null;
+                      return (
+                        <tr key={p.idPenarikan} className="border-t border-slate-100 hover:bg-slate-50/50 transition">
+                          <td className="px-6 py-3 font-semibold text-slate-900">
+                            {namaSiswa}
+                            {namaWali && <span className="block text-[10px] font-normal text-slate-400">Wali: {namaWali}</span>}
+                          </td>
+                          <td className="px-3 py-3 text-right font-black text-red-600">
+                            - {rp(Number(p.nominal))}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">
+                            {p.keterangan || 'Penarikan saldo tabungan'}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">{p.diajukanOleh || 'Orang Tua'}</td>
+                          <td className="px-3 py-3 text-slate-600">{p.diverifikasiOleh || 'Bendahara'}</td>
+                          <td className="px-3 py-3">
+                            {p.buktiTransfer ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPreviewBukti({
+                                    label: `Bukti Transfer Penarikan - ${namaSiswa}`,
+                                    url: keUrlBerkas(p.buktiTransfer!),
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 text-[#095c51] font-semibold hover:underline cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Lihat Bukti</span>
+                              </button>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">Tunai / Tanpa file</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{tgl(p.createdAt)}</td>
+                          <td className="px-6 py-3 text-right space-x-2 whitespace-nowrap">
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                              DISETUJUI
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setKuitansiAktif({
+                                  noKuitansi: `KWT-TRK/${new Date(p.createdAt).getFullYear()}/${p.idPenarikan.slice(-6).toUpperCase()}`,
+                                  tanggal: new Date(p.createdAt).toLocaleDateString('id-ID', { dateStyle: 'long' }),
+                                  namaSiswa: namaSiswa,
+                                  kelompok: p.tabungan?.anak?.kelompok || null,
+                                  namaWali: namaWali,
+                                  jenisPembayaran: 'Penarikan Tabungan Siswa',
+                                  periode: null,
+                                  nominal: Number(p.nominal),
+                                  metodePembayaran: p.buktiTransfer ? 'Transfer Bank (TF)' : 'Tunai di Kantor Sekolah',
+                                  status: 'LUNAS',
+                                  keterangan: p.keterangan || (p.buktiTransfer ? 'Penarikan tabungan telah ditransfer ke rekening orang tua oleh Bendahara.' : 'Penarikan tabungan telah disetujui dan diserahkan tunai oleh Bendahara.'),
+                                  namaBendahara: namaBendahara || p.diverifikasiOleh || 'Bendahara',
+                                })
+                              }
+                              className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#095c51] font-bold text-[10px] inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
+                              title="Cetak Kuitansi Digital PDF"
+                            >
+                              <FileDown className="w-3 h-3" />
+                              <span>Kuitansi PDF</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -968,56 +1436,403 @@ export default function PortalBendahara() {
         </div>
       )}
 
-      {/* TAB: SETORAN TUNAI */}
-      {tab === 'tunai' && (
-        <form
-          onSubmit={simpanTunai}
-          className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-4 max-w-xl"
-        >
-          <h2 className="text-sm font-bold text-slate-900">Catat Setoran Tunai</h2>
-          <label className="block text-xs font-semibold text-slate-600">
-            Siswa
-            <select
-              value={idAnak}
-              onChange={(e) => setIdAnak(e.target.value)}
-              required
-              className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 text-xs"
+      {/* TAB: SETORAN / PEMBAYARAN TUNAI LANGSUNG */}
+      {tab === 'tunai' && (() => {
+        const anakTerpilih = daftarSiswaTunai.find((s) => s.idAnak === idAnak);
+        const unpaidSpp = anakTerpilih?.tagihan?.filter((t: any) => t.jenis === 'SPP' && t.status !== 'LUNAS') || [];
+        const pendaftaranTagihan = anakTerpilih?.tagihan?.find((t: any) => t.jenis === 'PENDAFTARAN');
+        const pendaftaranSudahLunas = pendaftaranTagihan?.status === 'LUNAS';
+
+        return (
+          <div className="grid md:grid-cols-3 gap-6">
+            <form
+              onSubmit={handleSimpanTransaksiTunai}
+              className="md:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-7 space-y-5"
             >
-              <option value="">Pilih siswa…</option>
-              {rekening.map((r) => (
-                <option key={r.idTabungan} value={r.anak.idAnak}>
-                  {r.anak.nama} — saldo {rp(Number(r.saldo))}
-                </option>
+              <div className="border-b border-slate-100 pb-3">
+                <h2 className="text-sm font-bold text-slate-900">Formulir Penerimaan Kas Tunai Langsung</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Catat transaksi penerimaan uang tunai di loket kasir sekolah (SPP, Tabungan, atau Biaya Pendaftaran). Data langsung tersinkronkan ke portal orang tua.
+                </p>
+              </div>
+
+              {/* Pilihan Kategori Transaksi */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">Pilih Jenis Transaksi Tunai *</label>
+                <div className="grid grid-cols-3 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTunaiKategori('SPP');
+                      if (unpaidSpp.length > 0) {
+                        setSelectedTagihanSppId(unpaidSpp[0].idTagihan);
+                        setNominal(String(unpaidSpp[0].nominal));
+                      } else {
+                        setNominal(String(tarifSpp || 135000));
+                      }
+                      setKeterangan('Pembayaran SPP tunai langsung di sekolah');
+                    }}
+                    className={`py-2.5 px-3 rounded-2xl border text-xs font-bold transition flex flex-col items-center gap-1 cursor-pointer ${
+                      tunaiKategori === 'SPP'
+                        ? 'bg-emerald-50 border-[#095c51] text-[#095c51] shadow-xs'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Receipt className="w-4 h-4" />
+                    <span>SPP Bulanan</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTunaiKategori('TABUNGAN');
+                      setNominal('50000');
+                      setKeterangan('Setoran tabungan tunai di kantor sekolah');
+                    }}
+                    className={`py-2.5 px-3 rounded-2xl border text-xs font-bold transition flex flex-col items-center gap-1 cursor-pointer ${
+                      tunaiKategori === 'TABUNGAN'
+                        ? 'bg-teal-50 border-teal-600 text-teal-800 shadow-xs'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Coins className="w-4 h-4" />
+                    <span>Tabungan Siswa</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTunaiKategori('PENDAFTARAN');
+                      setNominal('1570000');
+                      setKeterangan('Pembayaran biaya pendaftaran tunai di sekolah');
+                    }}
+                    className={`py-2.5 px-3 rounded-2xl border text-xs font-bold transition flex flex-col items-center gap-1 cursor-pointer ${
+                      tunaiKategori === 'PENDAFTARAN'
+                        ? 'bg-amber-50 border-amber-500 text-amber-800 shadow-xs'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Biaya Pendaftaran</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Pilih Siswa */}
+              <label className="block text-xs font-semibold text-slate-700 space-y-1">
+                <span>Nama Siswa *</span>
+                <select
+                  value={idAnak}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setIdAnak(id);
+                    const selected = daftarSiswaTunai.find((s) => s.idAnak === id);
+                    if (selected) {
+                      const unSpp = selected.tagihan?.filter((t: any) => t.jenis === 'SPP' && t.status !== 'LUNAS') || [];
+                      if (tunaiKategori === 'SPP') {
+                        if (unSpp.length > 0) {
+                          setSelectedTagihanSppId(unSpp[0].idTagihan);
+                          setNominal(String(unSpp[0].nominal));
+                        } else {
+                          setSelectedTagihanSppId('');
+                          setNominal(String(tarifSpp || 135000));
+                        }
+                      } else if (tunaiKategori === 'PENDAFTARAN') {
+                        setNominal('1570000');
+                      } else if (tunaiKategori === 'TABUNGAN') {
+                        setNominal('50000');
+                      }
+                    }
+                  }}
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs bg-white focus:outline-[#095c51]"
+                >
+                  <option value="">— Pilih siswa penerima pembayaran —</option>
+                  {daftarSiswaTunai.map((s) => (
+                    <option key={s.idAnak} value={s.idAnak}>
+                      {s.nama} ({s.kelompok}) — Ortu: {s.namaOrangTua}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {/* Sub-pilihan jika SPP */}
+              {tunaiKategori === 'SPP' && (
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">Tagihan SPP yang Dibayar:</span>
+                    {unpaidSpp.length > 0 ? (
+                      <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">
+                        {unpaidSpp.length} tagihan belum lunas
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                        Semua SPP terdaftar lunas
+                      </span>
+                    )}
+                  </div>
+                  {unpaidSpp.length > 0 ? (
+                    <select
+                      value={selectedTagihanSppId}
+                      onChange={(e) => {
+                        setSelectedTagihanSppId(e.target.value);
+                        const t = unpaidSpp.find((x: any) => x.idTagihan === e.target.value);
+                        if (t) setNominal(String(t.nominal));
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white"
+                    >
+                      {unpaidSpp.map((t: any) => (
+                        <option key={t.idTagihan} value={t.idTagihan}>
+                          SPP {t.labelBulan || `Bulan ${t.bulan}`} — Rp {Number(t.nominal).toLocaleString('id-ID')} ({t.status})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="space-y-1">
+                      <span className="text-[11px] text-slate-500 block">
+                        Belum ada tagihan SPP gantung. Pilih bulan SPP yang ingin dibayar langsung:
+                      </span>
+                      <select
+                        value={bulanSppTunai}
+                        onChange={(e) => setBulanSppTunai(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((b) => (
+                          <option key={b} value={b}>
+                            SPP Bulan {NAMA_BULAN[b] || b} (Rp {tarifSpp.toLocaleString('id-ID')})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sub-info jika Biaya Pendaftaran */}
+              {tunaiKategori === 'PENDAFTARAN' && (
+                <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-1 text-xs">
+                  <div className="font-bold text-amber-900">Status Biaya Pendaftaran Calon Siswa:</div>
+                  <div className="text-[11px] text-amber-800">
+                    {pendaftaranSudahLunas
+                      ? `✓ Pendaftaran untuk ${anakTerpilih?.nama || 'siswa ini'} sudah LUNAS.`
+                      : `Biaya pendaftaran standar: Rp 1.570.000. Pembayaran tunai ini akan langsung mengubah tagihan menjadi LUNAS dan mengaktifkan status siswa.`}
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-info jika Tabungan */}
+              {tunaiKategori === 'TABUNGAN' && (
+                <div className="p-3.5 bg-teal-50/70 rounded-2xl border border-teal-200 space-y-1 text-xs">
+                  <div className="font-bold text-teal-900">Saldo Tabungan Saat Ini:</div>
+                  <div className="text-base font-extrabold text-[#095c51]">
+                    {anakTerpilih ? rp(anakTerpilih.saldoTabungan) : '—'}
+                  </div>
+                  <p className="text-[10px] text-teal-700">
+                    Uang setoran tunai akan langsung ditambahkan ke saldo tabungan dan tercatat di mutasi rekening portal orang tua.
+                  </p>
+                </div>
+              )}
+
+              {/* Nominal & Keterangan */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <label className="block text-xs font-semibold text-slate-700 space-y-1">
+                  <span>Nominal Pembayaran / Setoran (Rp) *</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={nominal}
+                    onChange={(e) => setNominal(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-[#095c51]"
+                    placeholder="Contoh: 135000"
+                  />
+                </label>
+                <label className="block text-xs font-semibold text-slate-700 space-y-1">
+                  <span>Keterangan Transaksi</span>
+                  <input
+                    value={keterangan}
+                    onChange={(e) => setKeterangan(e.target.value)}
+                    placeholder={
+                      tunaiKategori === 'SPP'
+                        ? 'Pembayaran SPP tunai di loket'
+                        : tunaiKategori === 'PENDAFTARAN'
+                        ? 'Pembayaran pendaftaran tunai'
+                        : 'Setoran tabungan tunai di kantor'
+                    }
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-[#095c51]"
+                  />
+                </label>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={loadingTunai || !idAnak}
+                  className="px-6 py-3 rounded-2xl bg-[#095c51] hover:bg-[#074840] text-white text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  <CircleDollarSign className="w-4 h-4" />
+                  <span>
+                    {loadingTunai
+                      ? 'Menyimpan...'
+                      : tunaiKategori === 'SPP'
+                      ? 'Simpan Pembayaran SPP Tunai'
+                      : tunaiKategori === 'PENDAFTARAN'
+                      ? 'Simpan Pembayaran Pendaftaran Tunai'
+                      : 'Simpan Setoran Tabungan Tunai'}
+                  </span>
+                </button>
+              </div>
+            </form>
+
+            {/* Sidebar Ringkasan Info Siswa Terpilih */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 space-y-4 h-fit">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Informasi Keuangan Siswa
+              </h3>
+              {anakTerpilih ? (
+                <div className="space-y-3 text-xs">
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="text-[11px] text-slate-400">Nama Lengkap</div>
+                    <div className="font-bold text-slate-900 text-sm mt-0.5">{anakTerpilih.nama}</div>
+                    <div className="text-[11px] text-slate-500 mt-1">
+                      Kelompok: <strong className="text-slate-700">{anakTerpilih.kelompok}</strong> · Status: {anakTerpilih.status}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Orang Tua: <strong className="text-slate-700">{anakTerpilih.namaOrangTua}</strong> ({anakTerpilih.noHp})
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-teal-50/60 rounded-2xl border border-teal-100">
+                    <div className="text-[11px] text-teal-700 font-semibold">Saldo Tabungan Saat Ini</div>
+                    <div className="text-lg font-extrabold text-[#095c51] mt-0.5">{rp(anakTerpilih.saldoTabungan)}</div>
+                  </div>
+
+                  <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-100">
+                    <div className="text-[11px] text-amber-800 font-semibold">Status Pendaftaran</div>
+                    <div className="font-bold text-slate-800 mt-0.5">
+                      {pendaftaranSudahLunas ? '✓ LUNAS' : 'Belum Lunas'}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                    <div className="text-[11px] font-semibold text-slate-600">Daftar Tagihan SPP Siswa:</div>
+                    {anakTerpilih.tagihan?.filter((t: any) => t.jenis === 'SPP').length === 0 ? (
+                      <div className="text-[11px] text-slate-400">Belum ada tagihan SPP.</div>
+                    ) : (
+                      anakTerpilih.tagihan
+                        ?.filter((t: any) => t.jenis === 'SPP')
+                        .map((t: any) => (
+                          <div key={t.idTagihan} className="flex items-center justify-between text-[11px] border-b border-slate-200/60 pb-1">
+                            <span>SPP {t.labelBulan || `Bln ${t.bulan}`}</span>
+                            <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] ${
+                              t.status === 'LUNAS' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'
+                            }`}>
+                              {t.status}
+                            </span>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 p-4 text-center">
+                  Pilih siswa pada formulir untuk melihat rincian saldo dan tagihan.
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* TAB: PENGATURAN TUJUAN TRANSFER RESMI */}
+      {tab === 'rekening_bank' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-7 space-y-5">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">
+                  Tujuan Transfer Resmi (TK Islam Nur Habib)
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Nomor rekening bank di bawah ini akan ditampilkan secara otomatis kepada seluruh orang tua siswa di portal pembayaran saat transfer SPP, tabungan, atau pendaftaran.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={tambahRekeningBank}
+                className="px-4 py-2 bg-teal-50 hover:bg-teal-100 text-[#095c51] rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tambah Bank / Rekening</span>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {rekeningList.map((r, idx) => (
+                <div
+                  key={r.id || idx}
+                  className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 sm:p-5 relative space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#095c51] uppercase tracking-wider">
+                      Rekening Bank #{idx + 1}
+                    </span>
+                    {rekeningList.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => hapusRekeningBank(idx)}
+                        className="text-rose-600 hover:text-rose-700 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <label className="block text-xs font-semibold text-slate-700 space-y-1">
+                      <span>Nama Bank *</span>
+                      <input
+                        value={r.bank}
+                        onChange={(e) => ubahRekeningBank(idx, 'bank', e.target.value)}
+                        placeholder="Contoh: Bank Syariah Indonesia (BSI)"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-[#095c51]"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700 space-y-1">
+                      <span>Nomor Rekening *</span>
+                      <input
+                        value={r.nomorRekening}
+                        onChange={(e) => ubahRekeningBank(idx, 'nomorRekening', e.target.value)}
+                        placeholder="Contoh: 7123-4567-89"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold text-slate-900 bg-white focus:outline-[#095c51]"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700 space-y-1">
+                      <span>Atas Nama (Pemilik Rekening) *</span>
+                      <input
+                        value={r.atasNama}
+                        onChange={(e) => ubahRekeningBank(idx, 'atasNama', e.target.value)}
+                        placeholder="Contoh: TK Islam Nur Habib"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-[#095c51]"
+                      />
+                    </label>
+                  </div>
+                </div>
               ))}
-            </select>
-          </label>
-          <label className="block text-xs font-semibold text-slate-600">
-            Nominal (Rp)
-            <input
-              type="number"
-              min={1}
-              value={nominal}
-              onChange={(e) => setNominal(e.target.value)}
-              required
-              className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 text-xs"
-            />
-          </label>
-          <label className="block text-xs font-semibold text-slate-600">
-            Keterangan
-            <input
-              value={keterangan}
-              onChange={(e) => setKeterangan(e.target.value)}
-              placeholder="Setoran tunai di kantor"
-              className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 text-xs"
-            />
-          </label>
-          <button
-            type="submit"
-            className="px-5 py-2.5 rounded-xl bg-[#095c51] text-white text-xs font-bold cursor-pointer"
-          >
-            Simpan Setoran
-          </button>
-        </form>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={handleSimpanRekeningBank}
+                disabled={loadingRekening}
+                className="px-6 py-3 bg-[#095c51] hover:bg-[#074840] text-white rounded-2xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>{loadingRekening ? 'Menyimpan...' : 'Simpan Perubahan Rekening'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* TAB: REKONSILIASI */}
@@ -1154,6 +1969,135 @@ export default function PortalBendahara() {
           </div>
         </div>
       )}
+      {/* MODAL VERIFIKASI PENARIKAN TABUNGAN DENGAN UPLOAD BUKTI TRANSFER */}
+      {modalVerifikasiPenarikan && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl border border-slate-100 relative">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Verifikasi Penarikan Tabungan</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Upload bukti transfer bank bahwa uang telah dikirim ke rekening orang tua.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalVerifikasiPenarikan(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={submitVerifikasiPenarikan} className="space-y-4">
+              {/* Rincian Penarikan Siswa */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Nama Siswa:</span>
+                  <span className="font-bold text-slate-900">{modalVerifikasiPenarikan.tabungan?.anak?.nama || 'Siswa'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Orang Tua / Wali:</span>
+                  <span className="font-medium text-slate-800">
+                    {modalVerifikasiPenarikan.tabungan?.anak?.keluarga?.namaAyah || modalVerifikasiPenarikan.tabungan?.anak?.keluarga?.namaIbu || '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Nominal Penarikan:</span>
+                  <span className="font-black text-rose-600 text-sm">{rp(Number(modalVerifikasiPenarikan.nominal))}</span>
+                </div>
+                {modalVerifikasiPenarikan.keterangan && (
+                  <div className="mt-2 pt-2 border-t border-slate-200">
+                    <span className="text-slate-400 block text-[10px] font-semibold uppercase">Tujuan Rekening / Catatan Ortu:</span>
+                    <span className="font-medium text-teal-800 bg-teal-50 px-2 py-1 rounded-lg block mt-0.5">
+                      {modalVerifikasiPenarikan.keterangan}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Upload Bukti Uang Sudah Ditransfer */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Upload Bukti Transfer / Kirim Uang (JPG, PNG, atau PDF) *
+                </label>
+                <div className="mt-1 border-2 border-dashed border-teal-200 bg-teal-50/40 rounded-2xl p-4 text-center hover:bg-teal-50 transition cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg, application/pdf"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setFileBuktiTransfer(e.target.files[0]);
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  <div className="flex flex-col items-center justify-center space-y-1">
+                    <Banknote className="w-8 h-8 text-[#095c51]" />
+                    <span className="text-xs font-semibold text-slate-700">
+                      {fileBuktiTransfer ? fileBuktiTransfer.name : 'Pilih file bukti transfer (JPG, PNG, atau PDF)'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">Ukuran maksimal file 5 MB</span>
+                  </div>
+                </div>
+                {fileBuktiTransfer && (
+                  <div className="mt-2 flex items-center justify-between p-2 rounded-xl bg-teal-100/70 text-[#095c51] text-xs font-semibold">
+                    <span className="truncate max-w-[280px]">File terpilih: {fileBuktiTransfer.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFileBuktiTransfer(null)}
+                      className="text-red-600 hover:underline text-[11px] cursor-pointer"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Catatan Verifikasi */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Keterangan / Catatan Verifikasi (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={catatanVerifikasiPenarikan}
+                  onChange={(e) => setCatatanVerifikasiPenarikan(e.target.value)}
+                  placeholder="Misal: Sudah ditransfer via Bank Mandiri / BCA a.n..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
+                />
+              </div>
+
+              {/* Tombol Aksi */}
+              <div className="flex gap-2 justify-end pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setModalVerifikasiPenarikan(null)}
+                  disabled={prosesVerifikasiLoading}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={prosesVerifikasiLoading}
+                  className="px-5 py-2 bg-[#095c51] hover:bg-[#074840] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  {prosesVerifikasiLoading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Memproses...</span>
+                    </>
+                  ) : (
+                    <span>Konfirmasi & Simpan Bukti</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Kuitansi Digital Resmi (PDF) */}
       <KuitansiDigitalModal
         data={kuitansiAktif}

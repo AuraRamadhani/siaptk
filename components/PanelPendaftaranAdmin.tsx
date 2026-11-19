@@ -34,6 +34,7 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
     email: '',
   });
   const [anak, setAnak] = useState<AnakForm[]>([{ ...kosong }]);
+  const [bayarTunai, setBayarTunai] = useState(true);
   const [pesan, setPesan] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -75,6 +76,7 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
       fd.append('namaIbu', keluarga.namaIbu.trim());
       fd.append('noHp', keluarga.noHp.trim());
       fd.append('email', keluarga.email.trim());
+      fd.append('bayarTunai', bayarTunai ? 'true' : 'false');
       fd.append('anakCount', String(anak.length));
 
       anak.forEach((a, idx) => {
@@ -351,6 +353,26 @@ export default function PanelPendaftaranAdmin({ onSukses }: { onSukses?: () => v
             </div>
           );
         })}
+      </div>
+
+      {/* Bagian Pembayaran Pendaftaran Onsite & Verifikasi Berkas */}
+      <div className="space-y-3 pt-2 border-t border-slate-100">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-[#095c51]">
+          3. Pembayaran Biaya Pendaftaran
+        </h3>
+        <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 sm:p-5">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={bayarTunai}
+              onChange={(e) => setBayarTunai(e.target.checked)}
+              className="w-4 h-4 rounded text-[#095c51] focus:ring-[#095c51] accent-[#095c51] cursor-pointer"
+            />
+            <span className="text-xs font-bold text-slate-800">
+              Pembayaran Pendaftaran Tunai Langsung Lunas di Loket (Rp 1.570.000 / anak)
+            </span>
+          </label>
+        </div>
       </div>
 
       <div className="pt-2 flex justify-end">

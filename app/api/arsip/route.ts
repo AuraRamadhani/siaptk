@@ -3,7 +3,7 @@ import { prisma, KELUARGA_AMAN } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
 import { buatTagihanPendaftaran } from '@/lib/tagihan';
 
-const STAF = ['KEPALA_SEKOLAH', 'BENDAHARA', 'GURU'];
+const STAF = ['KEPALA_SEKOLAH', 'BENDAHARA', 'GURU', 'SUPER_ADMIN'];
 
 // GET /api/arsip?cari=...&tahunAjaran=...&status=...
 // Pencarian arsip siswa berdasarkan nama, NIK, tahun ajaran.
@@ -19,24 +19,46 @@ export async function GET(request: Request) {
     const tahunAjaran = searchParams.get('tahunAjaran');
     const status = searchParams.get('status');
 
-    const where: Record<string, unknown> = {};
+    const conditions: Record<string, unknown>[] = [];
 
     if (cari) {
-      where.OR = [
-        { nama: { contains: cari } },
-        { nik: { contains: cari } },
-        { keluarga: { namaAyah: { contains: cari } } },
-        { keluarga: { namaIbu: { contains: cari } } },
-      ];
+      conditions.push({
+        OR: [
+          { nama: { contains: cari } },
+          { nik: { contains: cari } },
+          { keluarga: { namaAyah: { contains: cari } } },
+          { keluarga: { namaIbu: { contains: cari } } },
+        ],
+      });
     }
 
-    if (status && ['AKTIF', 'PENDAFTAR'].includes(status)) {
-      where.status = status;
+    if (status) {
+      if (status === 'AKTIF') {
+        // Ambil siswa yang berstatus AKTIF atau yang sudah memiliki rombel kelompok belajar
+        conditions.push({
+          OR: [
+            { status: 'AKTIF' },
+            { riwayatKelompok: { some: {} } },
+          ],
+        });
+      } else if (status === 'PENDAFTAR') {
+        // Tampilkan pendaftar atau siswa yang masih memiliki berkas menunggu verifikasi
+        conditions.push({
+          OR: [
+            { status: 'PENDAFTAR' },
+            { berkasAnak: { some: { statusVerifikasi: 'MENUNGGU' } } },
+          ],
+        });
+      }
     }
 
     if (tahunAjaran) {
-      where.riwayatKelompok = { some: { idTahunAjaran: tahunAjaran } };
+      conditions.push({
+        riwayatKelompok: { some: { idTahunAjaran: tahunAjaran } },
+      });
     }
+
+    const where = conditions.length > 0 ? { AND: conditions } : {};
 
     const data = await prisma.anak.findMany({
       where,
@@ -44,11 +66,20 @@ export async function GET(request: Request) {
       include: {
         keluarga: {
           select: {
-            ...KELUARGA_AMAN,
+            idKeluarga: true,
+            namaAyah: true,
+            namaIbu: true,
+            noHp: true,
+            email: true,
+            alamat: true,
+            fileKK: true,
+            fileKTP: true,
             berkasKeluarga: true,
           },
         },
         berkasAnak: true,
+        rekeningTabungan: true,
+        tagihan: true,
         riwayatKelompok: {
           include: { kelompok: true, tahunAjaran: true },
           orderBy: { tahunAjaran: { periode: 'desc' } },
@@ -58,10 +89,14 @@ export async function GET(request: Request) {
 
     const tahunAjaranList = await prisma.tahunAjaran.findMany({ orderBy: { periode: 'desc' } });
 
-    return NextResponse.json({ success: true, data, tahunAjaranList });
+    return NextResponse.json(
+      { success: true, data, tahunAjaranList },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error) {
     console.error('API Arsip GET Error:', error);
-    return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : 'Kesalahan server.';
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
 

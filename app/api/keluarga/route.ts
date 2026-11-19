@@ -93,10 +93,24 @@ export async function GET(request: Request) {
                 await buatTagihanPendaftaran(prisma, a.idAnak);
                 perluMuatUlang = true;
             }
-            if (a.status === 'AKTIF' && !a.tagihan.some((t) => t.jenis === 'SPP' && t.bulan === bulanSekarang)) {
+
+            // Tagihan SPP bulanan HANYA boleh terbit jika pembayaran pendaftaran sudah diverifikasi LUNAS oleh Bendahara
+            const tagihanPendaftaran = a.tagihan.find((t) => t.jenis === 'PENDAFTARAN');
+            const pendaftaranLunas = tagihanPendaftaran ? tagihanPendaftaran.status === 'LUNAS' : false;
+
+            if (pendaftaranLunas && a.status === 'AKTIF' && !a.tagihan.some((t) => t.jenis === 'SPP' && t.bulan === bulanSekarang)) {
                 await pastikanTagihanSppBulanan(prisma, a.idAnak, bulanSekarang);
                 perluMuatUlang = true;
             }
+
+            // Jika pembayaran pendaftaran belum diverifikasi lunas, hapus tagihan SPP jika sempat terbuat
+            if (!pendaftaranLunas && a.tagihan.some((t) => t.jenis === 'SPP')) {
+                await prisma.tagihan.deleteMany({
+                    where: { idAnak: a.idAnak, jenis: 'SPP' },
+                });
+                perluMuatUlang = true;
+            }
+
             // Pastikan nominal tagihan SPP yang belum lunas selalu sinkron dengan tarif yang disetel Bendahara
             for (const t of a.tagihan) {
                 if (t.jenis === 'SPP' && t.status !== 'LUNAS' && Number(t.nominal) !== tarifAktif) {
@@ -313,7 +327,7 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
         }
 
-        const { idKeluarga, namaAyah, namaIbu, noHp, alamat } = await request.json();
+        const { idKeluarga, namaAyah, pekerjaanAyah, namaIbu, pekerjaanIbu, noHp, alamat } = await request.json();
         const target = sesi.peran === 'ORANG_TUA' ? sesi.id : idKeluarga;
         if (!target) {
             return NextResponse.json({ success: false, error: 'idKeluarga wajib diisi.' }, { status: 400 });
@@ -331,12 +345,14 @@ export async function PATCH(request: Request) {
             where: { idKeluarga: target },
             data: {
                 namaAyah: namaAyah !== undefined ? (namaAyah || null) : undefined,
+                pekerjaanAyah: pekerjaanAyah !== undefined ? (pekerjaanAyah || null) : undefined,
                 namaIbu: namaIbu !== undefined ? (namaIbu || null) : undefined,
+                pekerjaanIbu: pekerjaanIbu !== undefined ? (pekerjaanIbu || null) : undefined,
                 noHp: noHp ? String(noHp).trim() : undefined,
                 alamat: alamat !== undefined ? (alamat || null) : undefined,
             },
             // Jangan pernah kirim hash kata sandi ke klien.
-            select: { idKeluarga: true, namaAyah: true, namaIbu: true, noHp: true, email: true, alamat: true },
+            select: { idKeluarga: true, namaAyah: true, pekerjaanAyah: true, namaIbu: true, pekerjaanIbu: true, noHp: true, email: true, alamat: true },
         });
 
         return NextResponse.json({ success: true, data: updated, message: 'Data keluarga diperbarui.' });

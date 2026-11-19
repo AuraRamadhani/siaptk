@@ -71,12 +71,15 @@ export async function GET(request: Request) {
       }
       const antrean = await prisma.transaksiTabungan.findMany({
         where: { status: status as StatusVerifikasi },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
         include: {
           tabungan: { include: { anak: { include: { keluarga: { select: KELUARGA_AMAN } } } } },
         },
       });
-      return NextResponse.json({ success: true, data: antrean });
+      return NextResponse.json(
+        { success: true, data: antrean },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+      );
     }
 
     if (idAnak) {
@@ -120,11 +123,31 @@ export async function GET(request: Request) {
     if (sesi.peran !== 'BENDAHARA' && sesi.peran !== 'KEPALA_SEKOLAH') {
       return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
     }
+
+    // Pastikan seluruh anak yang terdaftar terkoneksi ke rekening tabungan
+    const anakTanpaRekening = await prisma.anak.findMany({
+      where: { rekeningTabungan: null },
+      select: { idAnak: true },
+    });
+    if (anakTanpaRekening.length > 0) {
+      await prisma.rekeningTabungan.createMany({
+        data: anakTanpaRekening.map((a) => ({ idAnak: a.idAnak, saldo: 0 })),
+        skipDuplicates: true,
+      });
+    }
+
     const rekening = await prisma.rekeningTabungan.findMany({
-      include: { anak: { include: { keluarga: { select: KELUARGA_AMAN } } } },
+      include: {
+        anak: { include: { keluarga: { select: KELUARGA_AMAN } } },
+        transaksi: { where: { status: 'DIVERIFIKASI' }, orderBy: { createdAt: 'desc' } },
+        penarikan: { where: { status: 'DIVERIFIKASI' }, orderBy: { createdAt: 'desc' } },
+      },
       orderBy: { saldo: 'desc' },
     });
-    return NextResponse.json({ success: true, data: rekening });
+    return NextResponse.json(
+      { success: true, data: rekening },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error) {
     console.error('API Tabungan GET Error:', error);
     return NextResponse.json({ success: false, error: (error as Error).message || 'Kesalahan server.' }, { status: 500 });

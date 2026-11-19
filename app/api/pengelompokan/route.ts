@@ -7,7 +7,7 @@ import { hitungUsia, TANGGAL_ACUAN_PPDB, tentukanKelompokDariTglLahir, USIA_MIN,
 export async function GET() {
   try {
     const sesi = await sesiSekarang();
-    if (!sesi || !['KEPALA_SEKOLAH', 'GURU'].includes(sesi.peran)) {
+    if (!sesi || !['KEPALA_SEKOLAH', 'GURU', 'BENDAHARA', 'SUPER_ADMIN'].includes(sesi.peran)) {
       return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
     }
 
@@ -30,17 +30,19 @@ export async function GET() {
 
     const belumKelompok = await prisma.anak.findMany({
       where: {
-        status: 'AKTIF',
         riwayatKelompok: { none: { idTahunAjaran: tahunAktif.idTahunAjaran } },
       },
       include: { keluarga: { select: { namaAyah: true, namaIbu: true } } },
       orderBy: { nama: 'asc' },
     });
 
-    return NextResponse.json({
-      success: true,
-      data: { tahunAjaran: tahunAktif, kelompok, belumKelompok },
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        data: { tahunAjaran: tahunAktif, kelompok, belumKelompok },
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error) {
     console.error('API Pengelompokan GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });

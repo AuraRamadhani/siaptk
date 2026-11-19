@@ -22,11 +22,23 @@ export async function GET(request: Request) {
 
     const anak = await prisma.anak.findMany({
       where,
-      include: { keluarga: { select: KELUARGA_AMAN }, rekeningTabungan: true, berkasAnak: true },
+      include: {
+        keluarga: { select: KELUARGA_AMAN },
+        rekeningTabungan: true,
+        berkasAnak: true,
+        riwayatKelompok: {
+          include: { kelompok: true, tahunAjaran: true },
+          orderBy: { tahunAjaran: { periode: 'desc' } },
+        },
+        tagihan: true,
+      },
       orderBy: { nama: "asc" },
     });
 
-    return NextResponse.json({ success: true, data: anak });
+    return NextResponse.json(
+      { success: true, data: anak },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error) {
     console.error(error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });

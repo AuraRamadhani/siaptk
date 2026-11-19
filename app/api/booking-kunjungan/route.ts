@@ -3,8 +3,23 @@ import { prisma } from '@/lib/prisma';
 import type { StatusBooking, JenisBooking } from '@/app/generated/prisma/client';
 import { sesiSekarang } from '@/lib/sesi';
 
+// Cek apakah slot kunjungan sudah terlewati dari waktu sekarang
+function slotSudahLewat(slot: { tanggal: Date | string; jam: Date | string }, now = new Date()): boolean {
+  const d = new Date(slot.tanggal);
+  const jStr =
+    typeof slot.jam === 'string'
+      ? slot.jam
+      : slot.jam instanceof Date
+      ? slot.jam.toISOString()
+      : String(slot.jam);
+  const timePart = jStr.includes('T') ? jStr.split('T')[1].slice(0, 5) : jStr.slice(0, 5);
+  const [hh, mm] = timePart.split(':').map(Number);
+  const slotDate = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh || 0, mm || 0, 0);
+  return slotDate.getTime() <= now.getTime();
+}
+
 // GET /api/booking-kunjungan -> daftar booking
-// ORANG_TUA: hanya milik sendiri. KEPALA_SEKOLAH/BENDAHARA: semua.
+// ORANG_TUA: hanya milik sendiri & aktif. KEPALA_SEKOLAH/BENDAHARA: semua yang aktif.
 export async function GET() {
   try {
     const sesi = await sesiSekarang();
@@ -12,11 +27,21 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
     }
 
+    const now = new Date();
+    const hariIni = new Date();
+    hariIni.setHours(0, 0, 0, 0);
+
     let where: Record<string, unknown> = {};
     if (sesi.peran === 'ORANG_TUA') {
-      where = { idKeluarga: sesi.id };
+      where = {
+        idKeluarga: sesi.id,
+        status: { not: 'DIBATALKAN' },
+        slot: { tanggal: { gte: hariIni } },
+      };
     } else if (sesi.peran === 'KEPALA_SEKOLAH' || sesi.peran === 'BENDAHARA') {
-      where = {};
+      where = {
+        slot: { tanggal: { gte: hariIni } },
+      };
     } else {
       return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
     }
@@ -30,7 +55,10 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ success: true, data });
+    // Otomatis saring agar jadwal kunjungan yang sudah lewat jam/harinya tidak muncul
+    const dataAktif = data.filter((b) => !slotSudahLewat(b.slot, now));
+
+    return NextResponse.json({ success: true, data: dataAktif });
   } catch (error) {
     console.error('API BookingKunjungan GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });

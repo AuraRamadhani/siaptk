@@ -38,12 +38,12 @@ export function parseCatatan(raw: string) {
   return { catatan: raw, fotoAktivitas: null, detailLaporan: null };
 }
 
-// GET /api/laporan-mingguan -> list laporan milik guru (GURU only)
+// GET /api/laporan-mingguan -> list laporan untuk guru & monitoring kepala sekolah
 export async function GET() {
   try {
     const sesi = await sesiSekarang();
-    if (!sesi || sesi.peran !== 'GURU') {
-      return NextResponse.json({ success: false, error: 'Hanya guru yang dapat melihat laporan.' }, { status: 403 });
+    if (!sesi || !['GURU', 'KEPALA_SEKOLAH', 'BENDAHARA', 'SUPER_ADMIN'].includes(sesi.peran)) {
+      return NextResponse.json({ success: false, error: 'Hanya staf yang dapat melihat laporan.' }, { status: 403 });
     }
 
     const tahunAktif = await prisma.tahunAjaran.findFirst({ where: { statusAktif: true } });
@@ -74,7 +74,10 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(
+      { success: true, data },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error) {
     console.error('API Laporan GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });

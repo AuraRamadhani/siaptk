@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
 import type { StatusVerifikasi } from '@/app/generated/prisma/client';
+import { writeFile } from 'fs/promises';
+import path from 'path';
+import { mkdirSync } from 'fs';
+
+const TIPE_BUKTI = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const MAKS_BUKTI = 5 * 1024 * 1024;
+const namaAman = (nama: string) => nama.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
 
 const PETUGAS = new Set(['BENDAHARA', 'KEPALA_SEKOLAH']);
 
@@ -27,10 +34,13 @@ export async function GET(request: Request) {
       }
       const antrean = await prisma.penarikanTabungan.findMany({
         where: { status: status as StatusVerifikasi },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
         include: includeRelasi,
       });
-      return NextResponse.json({ success: true, data: antrean });
+      return NextResponse.json(
+        { success: true, data: antrean },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+      );
     }
 
     // Detail untuk orang tua (hanya anak sendiri)
@@ -142,14 +152,51 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: 'Peran tidak berwenang.' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { idPenarikan, aksi, catatanPenolakan } = body;
+    const contentType = request.headers.get('content-type') || '';
+    let idPenarikan = '';
+    let aksi = '';
+    let catatanPenolakan: string | null = null;
+    let catatanVerifikasi: string | null = null;
+    let buktiFile: File | null = null;
+
+    if (contentType.includes('multipart/form-data')) {
+      const fd = await request.formData();
+      idPenarikan = String(fd.get('idPenarikan') || '');
+      aksi = String(fd.get('aksi') || '');
+      catatanPenolakan = fd.get('catatanPenolakan') ? String(fd.get('catatanPenolakan')) : null;
+      catatanVerifikasi = fd.get('catatanVerifikasi') ? String(fd.get('catatanVerifikasi')) : null;
+      const f = fd.get('buktiTransfer');
+      if (f instanceof File && f.size > 0) buktiFile = f;
+    } else {
+      const body = await request.json();
+      idPenarikan = body.idPenarikan;
+      aksi = body.aksi;
+      catatanPenolakan = body.catatanPenolakan || null;
+      catatanVerifikasi = body.catatanVerifikasi || null;
+    }
 
     if (!idPenarikan || !['verifikasi', 'tolak'].includes(aksi)) {
       return NextResponse.json({ success: false, error: 'idPenarikan dan aksi (verifikasi/tolak) wajib diisi.' }, { status: 400 });
     }
     if (aksi === 'tolak' && !catatanPenolakan?.trim()) {
       return NextResponse.json({ success: false, error: 'Catatan penolakan wajib diisi.' }, { status: 400 });
+    }
+
+    if (buktiFile) {
+      if (buktiFile.size > MAKS_BUKTI) {
+        return NextResponse.json({ success: false, error: 'Ukuran bukti transfer maksimal 5 MB.' }, { status: 400 });
+      }
+      if (!TIPE_BUKTI.has(buktiFile.type)) {
+        return NextResponse.json({ success: false, error: 'Format bukti harus JPG, PNG, atau PDF.' }, { status: 400 });
+      }
+    }
+
+    let buktiFilename: string | null = null;
+    if (buktiFile) {
+      const uploadDir = path.join(process.cwd(), 'public/uploads');
+      mkdirSync(uploadDir, { recursive: true });
+      buktiFilename = `penarikan_${Date.now()}_${namaAman(buktiFile.name)}`;
+      await writeFile(path.join(uploadDir, buktiFilename), Buffer.from(await buktiFile.arrayBuffer()));
     }
 
     const hasil = await prisma.$transaction(async (tx) => {
@@ -198,9 +245,10 @@ export async function PATCH(request: Request) {
         data: {
           idTabungan: penarikan.idTabungan,
           jenis: 'TARIK',
-          metode: 'TUNAI',
+          metode: buktiFilename ? 'TRANSFER' : 'TUNAI',
           nominal,
-          keterangan: penarikan.keterangan || 'Penarikan tunai di kantor bendahara',
+          keterangan: catatanVerifikasi || penarikan.keterangan || (buktiFilename ? 'Penarikan transfer ke rekening orang tua' : 'Penarikan tunai di kantor bendahara'),
+          bukti: buktiFilename,
           dicatatOleh: sesi.nama,
           status: 'DIVERIFIKASI',
         },
@@ -208,7 +256,11 @@ export async function PATCH(request: Request) {
 
       const updated = await tx.penarikanTabungan.update({
         where: { idPenarikan },
-        data: { status: 'DIVERIFIKASI', diverifikasiOleh: sesi.nama },
+        data: {
+          status: 'DIVERIFIKASI',
+          diverifikasiOleh: sesi.nama,
+          buktiTransfer: buktiFilename,
+        },
       });
 
       // Notifikasi ke orang tua
@@ -217,8 +269,10 @@ export async function PATCH(request: Request) {
           idKeluarga: penarikan.tabungan.anak.idKeluarga,
           tipe: 'PENARIKAN_DIVERIFIKASI',
           judul: 'Penarikan Tabungan Disetujui',
-          pesan: `Pengajuan penarikan tabungan sebesar Rp${nominal.toLocaleString('id-ID')} untuk ${penarikan.tabungan.anak.nama} telah disetujui. Uang tunai dapat diambil di kantor bendahara. Saldo terbaru: Rp${(saldoSekarang - nominal).toLocaleString('id-ID')}.`,
-          dataReferensi: JSON.stringify({ idPenarikan: updated.idPenarikan, tipe: 'penarikan', status: 'DIVERIFIKASI' }),
+          pesan: buktiFilename
+            ? `Pengajuan penarikan tabungan sebesar Rp${nominal.toLocaleString('id-ID')} untuk ${penarikan.tabungan.anak.nama} telah disetujui dan berhasil ditransfer ke rekening orang tua. Saldo terbaru: Rp${(saldoSekarang - nominal).toLocaleString('id-ID')}.`
+            : `Pengajuan penarikan tabungan sebesar Rp${nominal.toLocaleString('id-ID')} untuk ${penarikan.tabungan.anak.nama} telah disetujui. Uang tunai dapat diambil di kantor bendahara. Saldo terbaru: Rp${(saldoSekarang - nominal).toLocaleString('id-ID')}.`,
+          dataReferensi: JSON.stringify({ idPenarikan: updated.idPenarikan, tipe: 'penarikan', status: 'DIVERIFIKASI', buktiTransfer: buktiFilename }),
         },
       });
 
@@ -228,7 +282,11 @@ export async function PATCH(request: Request) {
     return NextResponse.json({
       success: true,
       data: hasil,
-      message: aksi === 'tolak' ? 'Penarikan ditolak.' : 'Penarikan diverifikasi, saldo dipotong, dan slip dicatat.',
+      message: aksi === 'tolak'
+        ? 'Penarikan ditolak.'
+        : buktiFilename
+        ? 'Penarikan berhasil diverifikasi dan bukti transfer telah tersimpan.'
+        : 'Penarikan diverifikasi, saldo dipotong, dan slip dicatat.',
     });
   } catch (error) {
     console.error('API PenarikanTabungan PATCH Error:', error);

@@ -54,7 +54,7 @@ export default function PanelArsip({
     const targetStatus = mode === 'verifikasi_pendaftaran' ? 'PENDAFTAR' : mode === 'arsip_aktif' ? 'AKTIF' : status;
     if (targetStatus) q.set('status', targetStatus);
 
-    const res = await fetch('/api/arsip?' + q.toString()).then((x) => x.json());
+    const res = await fetch('/api/arsip?' + q.toString(), { cache: 'no-store' }).then((x) => x.json());
     if (res.success) {
       setData(res.data || []);
       setTahunList(res.tahunAjaranList || []);

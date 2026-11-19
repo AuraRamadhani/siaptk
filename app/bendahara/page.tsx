@@ -12,7 +12,7 @@ export default async function HalamanBendahara() {
     <main className="min-h-screen bg-gray-50 text-gray-800 flex flex-col">
       <BilahAtas judul="Portal Bendahara" nama={sesi.nama} inisial="BD" />
       <div className="w-full flex-1">
-        <PortalBendahara />
+        <PortalBendahara namaBendahara={sesi.nama} />
       </div>
     </main>
   );

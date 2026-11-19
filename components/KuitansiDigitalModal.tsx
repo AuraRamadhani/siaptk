@@ -16,6 +16,7 @@ export type DataKuitansi = {
   metodePembayaran?: string | null;
   status: 'LUNAS' | string;
   keterangan?: string | null;
+  namaBendahara?: string | null;
 };
 
 interface Props {
@@ -427,7 +428,7 @@ export default function KuitansiDigitalModal({ data, onClose }: Props) {
                   <path d="M 35 30 L 125 32" fill="none" stroke="#0f172a" stroke-width="1.8" stroke-linecap="round"/>
                 </svg>
               </div>
-              <div class="ttd-nama">Siti Rahmawati, S.E.</div>
+              <div class="ttd-nama">${data.namaBendahara || 'Siti Rahmawati, S.E.'}</div>
               <div class="ttd-nip">NIP. 19850712 201001 2 003</div>
             </div>
           </div>
@@ -639,7 +640,7 @@ export default function KuitansiDigitalModal({ data, onClose }: Props) {
                 </div>
 
                 <div className="text-xs sm:text-sm font-bold text-slate-900 underline">
-                  Siti Rahmawati, S.E.
+                  {data.namaBendahara || 'Siti Rahmawati, S.E.'}
                 </div>
                 <div className="text-[10px] font-sans text-slate-500">
                   NIP. 19850712 201001 2 003

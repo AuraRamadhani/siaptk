@@ -10,16 +10,24 @@ const DEADLINE_HARI = 14; // 2 minggu
 export async function GET() {
   try {
     const sesi = await sesiSekarang();
-    if (!sesi || sesi.peran !== KEPALA) {
-      return NextResponse.json({ success: false, error: 'Hanya kepala sekolah yang dapat melihat daftar calon siswa.' }, { status: 403 });
+    if (!sesi || !['KEPALA_SEKOLAH', 'BENDAHARA', 'SUPER_ADMIN'].includes(sesi.peran)) {
+      return NextResponse.json({ success: false, error: 'Hanya staf yang berwenang yang dapat melihat daftar calon siswa.' }, { status: 403 });
     }
 
     const data = await prisma.anak.findMany({
       where: { status: 'PENDAFTAR' },
       orderBy: { nama: 'asc' },
-      include: { keluarga: { select: KELUARGA_AMAN }, berkasAnak: true, tagihan: true },
+      include: {
+        keluarga: { select: KELUARGA_AMAN },
+        berkasAnak: true,
+        tagihan: true,
+        riwayatKelompok: { include: { kelompok: true } },
+      },
     });
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(
+      { success: true, data },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error) {
     console.error('API Pendaftaran GET Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });

@@ -10,7 +10,9 @@ datasource db {
 model Keluarga {
   idKeluarga         String              @id @default(uuid()) @map("id_keluarga")
   namaAyah           String?             @map("nama_ayah")
+  pekerjaanAyah      String?             @map("pekerjaan_ayah")
   namaIbu            String?             @map("nama_ibu")
+  pekerjaanIbu       String?             @map("pekerjaan_ibu")
   noHp               String              @map("no_hp")
   email              String?             @unique
   kataSandi          String?             @map("kata_sandi")
@@ -200,6 +202,7 @@ model PenarikanTabungan {
   idTabungan      String                 @map("id_tabungan")
   nominal         Decimal                @db.Decimal(12, 2)
   keterangan      String?                @db.Text
+  buktiTransfer   String?                @map("bukti_transfer") @db.Text
   status          StatusVerifikasi       @default(MENUNGGU)
   catatanPenolakan String?              @map("catatan_penolakan") @db.Text
   diajukanOleh    String                 @map("diajukan_oleh")

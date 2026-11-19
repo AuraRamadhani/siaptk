@@ -38,6 +38,8 @@ import {
     Sparkles,
     BookOpen,
     CheckCircle,
+    CalendarCheck,
+    MapPin,
 } from "lucide-react";
 import logoSIAPTK from "../app/assets/siap-tk-logo.png";
 import { tentukanKelompokDariTglLahir, cekKelayakanTanggalLahir } from "@/lib/usia";
@@ -109,34 +111,47 @@ function buatInisial(nama: string): string {
     return `${kata[0][0]}${kata[1][0]}`.toUpperCase();
 }
 
-const InfoRekeningSekolah = () => (
-    <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2.5 text-xs">
-        <div className="flex items-center gap-1.5 font-bold text-emerald-900">
-            <CreditCard className="w-4 h-4 text-[#095c51]" />
-            <span>Tujuan Transfer Resmi (TK Islam Nur Habib):</span>
+const InfoRekeningSekolah = () => {
+    const [rekening, setRekening] = useState<{ id: string; bank: string; nomorRekening: string; atasNama: string }[]>([
+        { id: "1", bank: "Bank Syariah Indonesia (BSI)", nomorRekening: "7123-4567-89", atasNama: "TK Islam Nur Habib" },
+        { id: "2", bank: "Bank Central Asia (BCA)", nomorRekening: "8876-5432-10", atasNama: "Yayasan Nur Habib" },
+        { id: "3", bank: "Bank Mandiri", nomorRekening: "132-00-9876543-2", atasNama: "TK Islam Nur Habib" },
+    ]);
+
+    useEffect(() => {
+        let isMounted = true;
+        fetch("/api/pengaturan/rekening", { cache: "no-store" })
+            .then((r) => r.json())
+            .then((res) => {
+                if (isMounted && res.success && Array.isArray(res.data) && res.data.length > 0) {
+                    setRekening(res.data);
+                }
+            })
+            .catch(() => {});
+        return () => { isMounted = false; };
+    }, []);
+
+    return (
+        <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2.5 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                <CreditCard className="w-4 h-4 text-[#095c51]" />
+                <span>Tujuan Transfer Resmi (TK Islam Nur Habib):</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-700">
+                {rekening.map((r) => (
+                    <div key={r.id || r.nomorRekening} className="p-3 bg-white rounded-xl border border-emerald-100 shadow-xs">
+                        <div className="font-extrabold text-[#095c51]">{r.bank}</div>
+                        <div className="font-mono font-bold text-sm text-slate-900 tracking-wider mt-0.5">{r.nomorRekening}</div>
+                        <div className="text-[10px] text-slate-500">a.n. {r.atasNama}</div>
+                    </div>
+                ))}
+            </div>
+            <p className="text-[10px] text-emerald-700 italic">
+                *Pastikan nominal transfer sesuai tagihan dan simpan bukti transfer (struk/screenshot) untuk diunggah di formulir ini.
+            </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-700">
-            <div className="p-3 bg-white rounded-xl border border-emerald-100 shadow-xs">
-                <div className="font-extrabold text-[#095c51]">Bank Syariah Indonesia (BSI)</div>
-                <div className="font-mono font-bold text-sm text-slate-900 tracking-wider mt-0.5">7123-4567-89</div>
-                <div className="text-[10px] text-slate-500">a.n. TK Islam Nur Habib</div>
-            </div>
-            <div className="p-3 bg-white rounded-xl border border-emerald-100 shadow-xs">
-                <div className="font-extrabold text-[#095c51]">Bank Central Asia (BCA)</div>
-                <div className="font-mono font-bold text-sm text-slate-900 tracking-wider mt-0.5">8876-5432-10</div>
-                <div className="text-[10px] text-slate-500">a.n. Yayasan Nur Habib</div>
-            </div>
-            <div className="p-3 bg-white rounded-xl border border-emerald-100 shadow-xs">
-                <div className="font-extrabold text-[#095c51]">Bank Mandiri</div>
-                <div className="font-mono font-bold text-sm text-slate-900 tracking-wider mt-0.5">132-00-9876543-2</div>
-                <div className="text-[10px] text-slate-500">a.n. TK Islam Nur Habib</div>
-            </div>
-        </div>
-        <p className="text-[10px] text-emerald-700 italic">
-            *Pastikan nominal transfer sesuai tagihan dan simpan bukti transfer (struk/screenshot) untuk diunggah di formulir ini.
-        </p>
-    </div>
-);
+    );
+};
 
 export default function PortalOrangTua({
     activeChildId,
@@ -213,13 +228,71 @@ export default function PortalOrangTua({
     const [editNamaAyah, setEditNamaAyah] = useState<string>("");
     const [editNamaIbu, setEditNamaIbu] = useState<string>("");
     const [editNoHp, setEditNoHp] = useState<string>("");
+    const [editPekerjaanAyah, setEditPekerjaanAyah] = useState<string>("");
+    const [editPekerjaanIbu, setEditPekerjaanIbu] = useState<string>("");
     const [savingAlamat, setSavingAlamat] = useState<boolean>(false);
+
+    // State pelacakan notifikasi tab yang sudah dibuka / dilihat
+    const [seenTabs, setSeenTabs] = useState<string[]>([]);
+    const handleTabClick = (tabId: string) => {
+        setActiveTab(tabId);
+        if (!seenTabs.includes(tabId)) {
+            setSeenTabs((prev) => [...prev, tabId]);
+        }
+    };
+
+    // State form Booking Pendaftaran Onsite
+    const [onsiteBookingSlot, setOnsiteBookingSlot] = useState<string>("");
+    const [onsiteBookingNamaAnak, setOnsiteBookingNamaAnak] = useState<string>("");
+    const [onsiteBookingCatatan, setOnsiteBookingCatatan] = useState<string>("");
+    const [isSubmittingOnsiteBooking, setIsSubmittingOnsiteBooking] = useState<boolean>(false);
+
+    const handlePesanOnsiteBooking = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!onsiteBookingSlot) {
+            toast.warning("Silakan pilih slot waktu kunjungan terlebih dahulu.");
+            return;
+        }
+        setIsSubmittingOnsiteBooking(true);
+        try {
+            const catatan = [
+                onsiteBookingNamaAnak ? `Pendaftaran Calon: ${onsiteBookingNamaAnak}` : "Pendaftaran Siswa Baru Onsite",
+                onsiteBookingCatatan ? `Catatan: ${onsiteBookingCatatan}` : "",
+            ].filter(Boolean).join(" | ");
+
+            const res = await fetch("/api/booking-kunjungan", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    idSlot: onsiteBookingSlot,
+                    jenisBooking: "UMUM",
+                    catatanOrangTua: catatan,
+                }),
+            }).then((r) => r.json());
+
+            if (res.success) {
+                toast.success("Jadwal kunjungan pendaftaran onsite berhasil dibooking!");
+                setOnsiteBookingSlot("");
+                setOnsiteBookingNamaAnak("");
+                setOnsiteBookingCatatan("");
+                fetchSlotsAndBookings();
+            } else {
+                toast.error(res.error || "Gagal memesan slot kunjungan.");
+            }
+        } catch {
+            toast.error("Terjadi kesalahan saat memproses booking kunjungan.");
+        } finally {
+            setIsSubmittingOnsiteBooking(false);
+        }
+    };
 
     const bukaModalEditAlamat = () => {
         setEditAlamatInput(keluarga?.alamat || "");
         setEditNamaAyah(keluarga?.namaAyah || "");
         setEditNamaIbu(keluarga?.namaIbu || "");
         setEditNoHp(keluarga?.noHp || "");
+        setEditPekerjaanAyah(keluarga?.pekerjaanAyah || "");
+        setEditPekerjaanIbu(keluarga?.pekerjaanIbu || "");
         setShowEditAlamatModal(true);
     };
 
@@ -235,6 +308,8 @@ export default function PortalOrangTua({
                     namaAyah: editNamaAyah.trim(),
                     namaIbu: editNamaIbu.trim(),
                     noHp: editNoHp.trim(),
+                    pekerjaanAyah: editPekerjaanAyah.trim(),
+                    pekerjaanIbu: editPekerjaanIbu.trim(),
                 }),
             }).then((r) => r.json());
 
@@ -366,6 +441,10 @@ export default function PortalOrangTua({
                             };
                         });
 
+                        const tagihanPendaftaranChild = (ch.tagihan || []).find((t: any) => t.jenis === "PENDAFTARAN");
+                        const pendaftaranLunasChild = tagihanPendaftaranChild ? tagihanPendaftaranChild.status === "LUNAS" : ch.status === "AKTIF";
+                        const tagihanSppChild = (ch.tagihan || []).filter((t: any) => t.jenis === "SPP");
+
                         return {
                             id: String(ch.idAnak),
                             name: ch.nama,
@@ -381,13 +460,15 @@ export default function PortalOrangTua({
                             jalur: ch.jalurPendaftaran || "Daring",
                             deadlineBayar: ch.deadlineBayar ? new Date(ch.deadlineBayar).toLocaleDateString("id-ID") : null,
                             alasanPenolakan: ch.alasanPenolakan || null,
-                            sppStatus: ch.tagihan?.some((t: any) => t.status === "BELUM_BAYAR")
-                                ? "Belum Dibayar"
-                                : ch.tagihan?.some((t: any) => t.status === "MENUNGGU_VERIFIKASI")
-                                    ? "Menunggu Verifikasi"
-                                    : ch.tagihan?.length > 0
-                                        ? "Lunas"
-                                        : "Belum Ada Tagihan",
+                            sppStatus: !pendaftaranLunasChild
+                                ? "Pendaftaran Belum Lunas"
+                                : tagihanSppChild.some((t: any) => t.status === "BELUM_BAYAR")
+                                    ? "Belum Dibayar"
+                                    : tagihanSppChild.some((t: any) => t.status === "MENUNGGU_VERIFIKASI")
+                                        ? "Menunggu Verifikasi"
+                                        : tagihanSppChild.length > 0
+                                            ? "Lunas"
+                                            : "Belum Ada Tagihan",
                             savingsBalance: ch.rekeningTabungan ? Number(ch.rekeningTabungan.saldo) : 0,
                             tagihan: ch.tagihan || [],
                             berkasAnak: berkasObj || null,
@@ -709,17 +790,22 @@ export default function PortalOrangTua({
 
     const handleBatalBooking = async (idBooking: string) => {
         if (!confirm("Batalkan jadwal kedatangan ini?")) return;
-        const res = await fetch("/api/booking-kunjungan", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idBooking, status: "DIBATALKAN" }),
-        }).then((r) => r.json());
-        if (res.success) {
-            toast.info("Jadwal kedatangan dibatalkan.");
-            fetchSlotsAndBookings();
-            fetchNotifikasi();
-        } else {
-            toast.error(res.error || "Gagal membatalkan jadwal.");
+        try {
+            const res = await fetch("/api/booking-kunjungan", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ idBooking, status: "DIBATALKAN" }),
+            }).then((r) => r.json());
+            if (res.success) {
+                toast.info("Jadwal kedatangan dibatalkan.");
+                setBookingList((prev) => prev.filter((b) => b.idBooking !== idBooking));
+                fetchSlotsAndBookings();
+                fetchNotifikasi();
+            } else {
+                toast.error(res.error || "Gagal membatalkan jadwal.");
+            }
+        } catch {
+            toast.error("Terjadi kesalahan saat membatalkan jadwal.");
         }
     };
 
@@ -900,6 +986,13 @@ export default function PortalOrangTua({
         }
     };
 
+    const tagihanSppBelumLunasCount = familyChildren.flatMap((c) => {
+        const p = (c.tagihan || []).find((t: any) => t.jenis === "PENDAFTARAN");
+        const lunas = p ? p.status === "LUNAS" : c.status === "Aktif";
+        if (!lunas) return [];
+        return (c.tagihan || []).filter((t: any) => t.jenis === "SPP" && t.status !== "LUNAS");
+    }).length;
+
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased flex flex-col w-full relative">
             {/* Topbar Utama */}
@@ -1008,7 +1101,7 @@ export default function PortalOrangTua({
                     </div>
 
                     <button
-                        onClick={() => setActiveTab("overview")}
+                        onClick={() => handleTabClick("overview")}
                         className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
                             activeTab === "overview"
                                 ? "bg-teal-50 text-[#095c51] font-bold border-l-4 border-[#095c51]"
@@ -1020,7 +1113,7 @@ export default function PortalOrangTua({
                     </button>
 
                     <button
-                        onClick={() => setActiveTab("children")}
+                        onClick={() => handleTabClick("children")}
                         className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
                             activeTab === "children" || activeTab === "child_detail"
                                 ? "bg-teal-50 text-[#095c51] font-bold border-l-4 border-[#095c51]"
@@ -1031,57 +1124,106 @@ export default function PortalOrangTua({
                             <Users className="w-4 h-4 shrink-0" />
                             <span>Anak & Pendaftaran</span>
                         </span>
-                        <span className="px-2 py-0.5 text-[10px] bg-teal-100 text-[#095c51] rounded-full font-bold">
-                            {familyChildren.length}
-                        </span>
+                        {!seenTabs.includes("children") && familyChildren.length > 0 && (
+                            <span className="px-2 py-0.5 text-[10px] bg-teal-100 text-[#095c51] rounded-full font-bold">
+                                {familyChildren.length}
+                            </span>
+                        )}
                     </button>
 
                     <button
-                        onClick={() => setActiveTab("payments")}
-                        className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
+                        onClick={() => handleTabClick("onsite_booking")}
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
+                            activeTab === "onsite_booking"
+                                ? "bg-teal-50 text-[#095c51] font-bold border-l-4 border-[#095c51]"
+                                : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                    >
+                        <span className="flex items-center space-x-3">
+                            <CalendarCheck className="w-4 h-4 shrink-0" />
+                            <span>Booking Pendaftaran Onsite</span>
+                        </span>
+                        {!seenTabs.includes("onsite_booking") && slotList.filter((s) => s.sisa > 0).length > 0 && (
+                            <span className="px-2 py-0.5 text-[10px] bg-emerald-100 text-emerald-800 rounded-full font-bold">
+                                {slotList.filter((s) => s.sisa > 0).length}
+                            </span>
+                        )}
+                    </button>
+
+                    <button
+                        onClick={() => handleTabClick("payments")}
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
                             activeTab === "payments"
                                 ? "bg-teal-50 text-[#095c51] font-bold border-l-4 border-[#095c51]"
                                 : "text-slate-600 hover:bg-slate-50"
                         }`}
                     >
-                        <CreditCard className="w-4 h-4 shrink-0" />
-                        <span>Tagihan SPP</span>
+                        <span className="flex items-center space-x-3">
+                            <CreditCard className="w-4 h-4 shrink-0" />
+                            <span>Tagihan SPP</span>
+                        </span>
+                        {!seenTabs.includes("payments") && tagihanSppBelumLunasCount > 0 && (
+                            <span className="px-2 py-0.5 text-[10px] bg-rose-100 text-rose-700 rounded-full font-bold">
+                                {tagihanSppBelumLunasCount}
+                            </span>
+                        )}
                     </button>
 
                     <button
-                        onClick={() => setActiveTab("savings")}
-                        className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
+                        onClick={() => handleTabClick("savings")}
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
                             activeTab === "savings"
                                 ? "bg-teal-50 text-[#095c51] font-bold border-l-4 border-[#095c51]"
                                 : "text-slate-600 hover:bg-slate-50"
                         }`}
                     >
-                        <Wallet className="w-4 h-4 shrink-0" />
-                        <span>Tabungan Siswa</span>
+                        <span className="flex items-center space-x-3">
+                            <Wallet className="w-4 h-4 shrink-0" />
+                            <span>Tabungan Siswa</span>
+                        </span>
+                        {!seenTabs.includes("savings") && familyChildren.flatMap((c) => c.riwayatTabungan || []).filter((r) => r.status === "PENDING").length > 0 && (
+                            <span className="px-2 py-0.5 text-[10px] bg-amber-100 text-amber-800 rounded-full font-bold">
+                                {familyChildren.flatMap((c) => c.riwayatTabungan || []).filter((r) => r.status === "PENDING").length}
+                            </span>
+                        )}
                     </button>
 
                     <button
-                        onClick={() => setActiveTab("reports")}
-                        className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
+                        onClick={() => handleTabClick("reports")}
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
                             activeTab === "reports"
                                 ? "bg-teal-50 text-[#095c51] font-bold border-l-4 border-[#095c51]"
                                 : "text-slate-600 hover:bg-slate-50"
                         }`}
                     >
-                        <FileTextIcon className="w-4 h-4 shrink-0" />
-                        <span>Laporan Mingguan</span>
+                        <span className="flex items-center space-x-3">
+                            <FileTextIcon className="w-4 h-4 shrink-0" />
+                            <span>Laporan Mingguan</span>
+                        </span>
+                        {!seenTabs.includes("reports") && familyChildren.flatMap((c) => c.laporanMingguan || []).length > 0 && (
+                            <span className="px-2 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded-full font-bold">
+                                {familyChildren.flatMap((c) => c.laporanMingguan || []).length}
+                            </span>
+                        )}
                     </button>
 
                     <button
-                        onClick={() => setActiveTab("family_files")}
-                        className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
+                        onClick={() => handleTabClick("family_files")}
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-medium transition cursor-pointer ${
                             activeTab === "family_files"
                                 ? "bg-teal-50 text-[#095c51] font-bold border-l-4 border-[#095c51]"
                                 : "text-slate-600 hover:bg-slate-50"
                         }`}
                     >
-                        <FolderOpen className="w-4 h-4 shrink-0" />
-                        <span>Berkas Keluarga</span>
+                        <span className="flex items-center space-x-3">
+                            <FolderOpen className="w-4 h-4 shrink-0" />
+                            <span>Berkas Keluarga</span>
+                        </span>
+                        {!seenTabs.includes("family_files") && ((!fileKKName ? 1 : 0) + (!fileKTPName ? 1 : 0)) > 0 && (
+                            <span className="px-2 py-0.5 text-[10px] bg-rose-100 text-rose-700 rounded-full font-bold">
+                                {(!fileKKName ? 1 : 0) + (!fileKTPName ? 1 : 0)}
+                            </span>
+                        )}
                     </button>
 
                     {/* Footer Sidebar Card Keluarga */}
@@ -1103,19 +1245,20 @@ export default function PortalOrangTua({
                     {/* Navigasi Mobile */}
                     <div className="flex md:hidden gap-2 overflow-x-auto pb-2">
                         {[
-                            { id: "overview", label: "Ringkasan", icon: LayoutDashboard },
-                            { id: "children", label: "Anak", icon: Users },
-                            { id: "payments", label: "Tagihan", icon: CreditCard },
-                            { id: "savings", label: "Tabungan", icon: Wallet },
-                            { id: "reports", label: "Laporan", icon: FileTextIcon },
-                            { id: "family_files", label: "Berkas", icon: FolderOpen },
+                            { id: "overview", label: "Ringkasan", icon: LayoutDashboard, badge: 0 },
+                            { id: "children", label: "Anak", icon: Users, badge: !seenTabs.includes("children") ? familyChildren.length : 0 },
+                            { id: "onsite_booking", label: "Booking Onsite", icon: CalendarCheck, badge: !seenTabs.includes("onsite_booking") ? slotList.filter((s) => s.sisa > 0).length : 0 },
+                            { id: "payments", label: "Tagihan", icon: CreditCard, badge: !seenTabs.includes("payments") ? tagihanSppBelumLunasCount : 0 },
+                            { id: "savings", label: "Tabungan", icon: Wallet, badge: !seenTabs.includes("savings") ? familyChildren.flatMap((c) => c.riwayatTabungan || []).filter((r) => r.status === "PENDING").length : 0 },
+                            { id: "reports", label: "Laporan", icon: FileTextIcon, badge: !seenTabs.includes("reports") ? familyChildren.flatMap((c) => c.laporanMingguan || []).length : 0 },
+                            { id: "family_files", label: "Berkas", icon: FolderOpen, badge: !seenTabs.includes("family_files") ? ((!fileKKName ? 1 : 0) + (!fileKTPName ? 1 : 0)) : 0 },
                         ].map((m) => {
                             const Icon = m.icon;
                             return (
                                 <button
                                     key={m.id}
-                                    onClick={() => setActiveTab(m.id)}
-                                    className={`px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 inline-flex items-center space-x-1.5 cursor-pointer ${
+                                    onClick={() => handleTabClick(m.id)}
+                                    className={`px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 inline-flex items-center space-x-1.5 cursor-pointer relative ${
                                         activeTab === m.id
                                             ? "bg-[#095c51] text-white"
                                             : "bg-white border border-slate-200 text-slate-600"
@@ -1123,6 +1266,13 @@ export default function PortalOrangTua({
                                 >
                                     <Icon className="w-3.5 h-3.5" />
                                     <span>{m.label}</span>
+                                    {m.badge > 0 && (
+                                        <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                                            activeTab === m.id ? "bg-white text-[#095c51]" : "bg-rose-500 text-white"
+                                        }`}>
+                                            {m.badge}
+                                        </span>
+                                    )}
                                 </button>
                             );
                         })}
@@ -1158,8 +1308,16 @@ export default function PortalOrangTua({
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
                                     <div className="text-xs font-semibold text-slate-500">SPP Bulan Ini</div>
-                                    <div className="text-2xl font-bold text-slate-900 mt-1.5">Rp135.000</div>
-                                    <span className="inline-block mt-3 px-2.5 py-1 text-[10px] bg-emerald-100 text-emerald-800 rounded-md font-bold">
+                                    <div className="text-2xl font-bold text-slate-900 mt-1.5">
+                                        {activeChild?.sppStatus === "Pendaftaran Belum Lunas" ? "—" : "Rp135.000"}
+                                    </div>
+                                    <span className={`inline-block mt-3 px-2.5 py-1 text-[10px] rounded-md font-bold ${
+                                        activeChild?.sppStatus === "Lunas"
+                                            ? "bg-emerald-100 text-emerald-800"
+                                            : activeChild?.sppStatus === "Pendaftaran Belum Lunas"
+                                                ? "bg-amber-100 text-amber-800"
+                                                : "bg-rose-100 text-rose-700"
+                                    }`}>
                                         {activeChild?.sppStatus || "Belum Dibayar"}
                                     </span>
                                 </div>
@@ -1746,13 +1904,309 @@ export default function PortalOrangTua({
                         );
                     })()}
 
+                    {/* TAB: BOOKING PENDAFTARAN ONSITE */}
+                    {activeTab === "onsite_booking" && (
+                        <div className="space-y-6">
+                            {/* Banner Info Onsite */}
+                            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div>
+                                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-200 mb-2">
+                                        <MapPin className="w-3.5 h-3.5" />
+                                        <span>Jalur Kunjungan Langsung ke Sekolah</span>
+                                    </div>
+                                    <h1 className="text-xl font-bold text-slate-900">Booking Pendaftaran Onsite</h1>
+                                    <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+                                        Pilih jadwal kunjungan kedatangan ke TK Islam Nur Habib untuk pendaftaran langsung, konsultasi dengan panitia PPDB, atau penyerahan berkas fisik tanpa perlu antre lama.
+                                    </p>
+                                </div>
+                                <div className="text-left md:text-right shrink-0">
+                                    <span className="text-[11px] text-slate-400 block">Slot Tersedia</span>
+                                    <span className="text-2xl font-bold text-[#095c51]">
+                                        {slotList.filter((s) => s.sisa > 0).length} Jadwal
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Grid: Form Booking & Jadwal Tersedia */}
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                {/* Form Booking Slot Kunjungan */}
+                                <div className="lg:col-span-5 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4 h-fit">
+                                    <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                                        <div className="p-2 rounded-xl bg-teal-50 text-[#095c51]">
+                                            <CalendarCheck className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-sm font-bold text-slate-900">Pesan Jadwal Kunjungan Onsite</h2>
+                                            <p className="text-[11px] text-slate-400">Pilih slot kedatangan yang tersedia</p>
+                                        </div>
+                                    </div>
+
+                                    <form onSubmit={handlePesanOnsiteBooking} className="space-y-3.5">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Pilih Slot Tanggal & Jam Kedatangan <span className="text-rose-500">*</span>
+                                            </label>
+                                            <select
+                                                value={onsiteBookingSlot}
+                                                onChange={(e) => setOnsiteBookingSlot(e.target.value)}
+                                                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] outline-none"
+                                                required
+                                            >
+                                                <option value="">— Pilih Slot Waktu Kunjungan —</option>
+                                                {slotList
+                                                    .filter((s) => {
+                                                        const tgl = new Date(s.tanggal);
+                                                        const jStr = s.jam || "";
+                                                        const timePart = jStr.includes("T") ? jStr.split("T")[1].slice(0, 5) : jStr.slice(0, 5);
+                                                        const [hh, mm] = timePart.split(":").map(Number);
+                                                        const slotWaktu = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), hh || 0, mm || 0, 0);
+                                                        return slotWaktu.getTime() > Date.now();
+                                                    })
+                                                    .map((s) => (
+                                                        <option key={s.idSlot} value={s.idSlot} disabled={s.sisa === 0}>
+                                                            {formatTanggalSlot(s.tanggal)} · {formatJamSlot(s.jam)} WIB {s.sisa === 0 ? '(Penuh)' : `(Sisa kuota: ${s.sisa})`}
+                                                        </option>
+                                                    ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Nama Calon Siswa yang Didaftarkan
+                                            </label>
+                                            {familyChildren.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    <select
+                                                        value={onsiteBookingNamaAnak}
+                                                        onChange={(e) => setOnsiteBookingNamaAnak(e.target.value)}
+                                                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] outline-none"
+                                                    >
+                                                        <option value="">— Pilih anak terdaftar atau input baru —</option>
+                                                        {familyChildren.map((c, idx) => {
+                                                            const childId = c.id || c.idAnak || `anak-${idx}`;
+                                                            const childName = c.name || c.nama || "Siswa";
+                                                            const childGroup = c.group || c.kelompok || "Calon Siswa";
+                                                            return (
+                                                                <option key={childId} value={childName}>
+                                                                    {childName} ({childGroup})
+                                                                </option>
+                                                            );
+                                                        })}
+                                                    </select>
+                                                    <input
+                                                        type="text"
+                                                        value={onsiteBookingNamaAnak}
+                                                        onChange={(e) => setOnsiteBookingNamaAnak(e.target.value)}
+                                                        placeholder="Atau ketik nama calon siswa baru..."
+                                                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:border-[#095c51] outline-none"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    value={onsiteBookingNamaAnak}
+                                                    onChange={(e) => setOnsiteBookingNamaAnak(e.target.value)}
+                                                    placeholder="Nama lengkap calon siswa..."
+                                                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] outline-none"
+                                                />
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Catatan / Keperluan Kunjungan
+                                            </label>
+                                            <textarea
+                                                value={onsiteBookingCatatan}
+                                                onChange={(e) => setOnsiteBookingCatatan(e.target.value)}
+                                                rows={2}
+                                                placeholder="Misal: Konsultasi pendaftaran langsung dan penyerahan berkas fisik."
+                                                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] outline-none"
+                                            />
+                                        </div>
+
+                                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-500 space-y-1">
+                                            <div className="font-semibold text-slate-700">Berkas yang perlu dibawa saat kunjungan:</div>
+                                            <ul className="list-disc pl-4 space-y-0.5">
+                                                <li>Fotokopi Akta Kelahiran & Kartu Keluarga (KK)</li>
+                                                <li>Fotokopi KTP Orang Tua (Ayah & Ibu)</li>
+                                                <li>Pas foto 3x4 berwarna (2 lembar)</li>
+                                            </ul>
+                                        </div>
+
+                                        <button
+                                            type="submit"
+                                            disabled={isSubmittingOnsiteBooking || !onsiteBookingSlot}
+                                            className="w-full py-3 bg-[#095c51] hover:bg-[#074840] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
+                                        >
+                                            {isSubmittingOnsiteBooking ? "Memproses..." : "Konfirmasi Booking Onsite"}
+                                        </button>
+                                    </form>
+                                </div>
+
+                                {/* Riwayat & Daftar Slot */}
+                                <div className="lg:col-span-7 space-y-6">
+                                    {/* Riwayat Booking Kunjungan Saya */}
+                                    {(() => {
+                                        const slotMasaDepan = (s: { tanggal: string; jam: string }) => {
+                                            const tgl = new Date(s.tanggal);
+                                            const jStr = s.jam || "";
+                                            const timePart = jStr.includes("T") ? jStr.split("T")[1].slice(0, 5) : jStr.slice(0, 5);
+                                            const [hh, mm] = timePart.split(":").map(Number);
+                                            const slotWaktu = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), hh || 0, mm || 0, 0);
+                                            return slotWaktu.getTime() > Date.now();
+                                        };
+
+                                        const bookingListAktif = bookingList.filter((b) => {
+                                            if (b.status === "DIBATALKAN") return false;
+                                            return slotMasaDepan(b.slot);
+                                        });
+
+                                        return (
+                                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+                                                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <Clock className="w-4 h-4 text-[#095c51]" />
+                                                        <h2 className="text-sm font-bold text-slate-900">Jadwal Kunjungan Saya</h2>
+                                                    </div>
+                                                    <span className="text-xs text-slate-400">Total: {bookingListAktif.length}</span>
+                                                </div>
+
+                                                {bookingListAktif.length === 0 ? (
+                                                    <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200">
+                                                        <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                                                        <p className="text-xs font-semibold text-slate-600">Belum ada booking jadwal kunjungan onsite yang aktif.</p>
+                                                        <p className="text-[11px] text-slate-400 mt-1">Pilih salah satu slot di sebelah kiri untuk memesan waktu kedatangan.</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        {bookingListAktif.map((b) => (
+                                                            <div key={b.idBooking} className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-teal-200 transition space-y-2">
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="p-1.5 rounded-lg bg-teal-50 text-[#095c51]">
+                                                                            <Calendar className="w-3.5 h-3.5" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-xs font-bold text-slate-900">
+                                                                                {formatTanggalSlot(b.slot.tanggal)}
+                                                                            </span>
+                                                                            <span className="text-xs text-slate-500 ml-1.5">
+                                                                                · Pukul {formatJamSlot(b.slot.jam)} WIB
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                        b.status === 'DIKONFIRMASI'
+                                                                            ? 'bg-emerald-100 text-emerald-800'
+                                                                            : b.status === 'MENUNGGU'
+                                                                            ? 'bg-amber-100 text-amber-800'
+                                                                            : b.status === 'SELESAI'
+                                                                            ? 'bg-slate-100 text-slate-700'
+                                                                            : 'bg-rose-100 text-rose-700'
+                                                                    }`}>
+                                                                        {b.status}
+                                                                    </span>
+                                                                </div>
+                                                                {b.catatanOrangTua && (
+                                                                    <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded-xl">
+                                                                        {b.catatanOrangTua}
+                                                                    </p>
+                                                                )}
+                                                                {b.catatanBendahara && (
+                                                                    <p className="text-xs text-teal-800 bg-teal-50 p-2 rounded-xl border border-teal-100">
+                                                                        Catatan Sekolah: {b.catatanBendahara}
+                                                                    </p>
+                                                                )}
+                                                                {b.status === 'MENUNGGU' && (
+                                                                    <div className="pt-2 flex justify-end">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleBatalBooking(b.idBooking)}
+                                                                            className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                                                                        >
+                                                                            Batalkan Kunjungan
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Info Slot Mendatang Sekolah */}
+                                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+                                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                                            Daftar Slot Waktu Kunjungan Sekolah
+                                        </h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {slotList
+                                                .filter((s) => {
+                                                    const tgl = new Date(s.tanggal);
+                                                    const jStr = s.jam || "";
+                                                    const timePart = jStr.includes("T") ? jStr.split("T")[1].slice(0, 5) : jStr.slice(0, 5);
+                                                    const [hh, mm] = timePart.split(":").map(Number);
+                                                    const slotWaktu = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), hh || 0, mm || 0, 0);
+                                                    return slotWaktu.getTime() > Date.now();
+                                                })
+                                                .map((s) => {
+                                                const isPenuh = s.sisa === 0;
+                                                return (
+                                                    <div
+                                                        key={s.idSlot}
+                                                        className={`p-3.5 rounded-2xl border text-xs transition ${
+                                                            isPenuh
+                                                                ? 'bg-slate-50 border-slate-200 opacity-60'
+                                                                : onsiteBookingSlot === s.idSlot
+                                                                ? 'bg-teal-50 border-[#095c51] ring-1 ring-[#095c51]'
+                                                                : 'bg-white border-slate-200 hover:border-slate-300'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <span className="font-bold text-slate-900">{formatTanggalSlot(s.tanggal)}</span>
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                isPenuh ? 'bg-rose-100 text-rose-700' : 'bg-teal-100 text-[#095c51]'
+                                                            }`}>
+                                                                {isPenuh ? 'Penuh' : `Sisa ${s.sisa}`}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-slate-500 text-[11px]">
+                                                            Pukul {formatJamSlot(s.jam)} WIB (Kuota: {s.kuota})
+                                                        </div>
+                                                        {!isPenuh && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setOnsiteBookingSlot(s.idSlot)}
+                                                                className="mt-2 w-full py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#095c51] font-bold text-[11px] cursor-pointer"
+                                                            >
+                                                                {onsiteBookingSlot === s.idSlot ? '✓ Terpilih' : 'Pilih Slot Ini'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* TAB: TAGIHAN SPP */}
                     {activeTab === "payments" && (() => {
-                        const sppList = familyChildren.flatMap((child) =>
-                            (child.tagihan || [])
+                        const sppList = familyChildren.flatMap((child) => {
+                            // Tagihan SPP HANYA muncul jika pembayaran pendaftaran anak sudah diverifikasi LUNAS oleh Bendahara
+                            const pendaftaran = (child.tagihan || []).find((t: any) => t.jenis === "PENDAFTARAN");
+                            const pendaftaranLunas = pendaftaran ? pendaftaran.status === "LUNAS" : child.status === "Aktif";
+                            if (!pendaftaranLunas) return [];
+
+                            return (child.tagihan || [])
                                 .filter((t: any) => t.jenis === "SPP")
-                                .map((t: any) => ({ ...t, childName: child.name }))
-                        );
+                                .map((t: any) => ({ ...t, childName: child.name }));
+                        });
 
                         return (
                         <div className="space-y-6">
@@ -2480,9 +2934,9 @@ export default function PortalOrangTua({
                                             <span className="font-semibold text-slate-800 shrink-0">Alamat Terdaftar:</span>
                                             <span className="text-slate-700">{keluarga?.alamat || "Belum diisi"}</span>
                                         </div>
-                                        <div className="flex items-center gap-4 text-[11px] text-slate-500">
-                                            <span>Ayah: <strong className="text-slate-700">{keluarga?.namaAyah || "-"}</strong></span>
-                                            <span>Ibu: <strong className="text-slate-700">{keluarga?.namaIbu || "-"}</strong></span>
+                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                                            <span>Ayah: <strong className="text-slate-700">{keluarga?.namaAyah || "-"}</strong> ({keluarga?.pekerjaanAyah || "Pekerjaan belum diisi"})</span>
+                                            <span>Ibu: <strong className="text-slate-700">{keluarga?.namaIbu || "-"}</strong> ({keluarga?.pekerjaanIbu || "Pekerjaan belum diisi"})</span>
                                             <span>No. HP: <strong className="text-slate-700">{keluarga?.noHp || "-"}</strong></span>
                                         </div>
                                     </div>
@@ -2695,29 +3149,33 @@ export default function PortalOrangTua({
                                 {modalStep === 1 && (
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Nama Lengkap Anak *</label>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Nama Lengkap Anak <span className="text-rose-500">*</span>
+                                            </label>
                                             <input
                                                 type="text"
                                                 value={namaAnak}
                                                 onChange={(e) => setNamaAnak(e.target.value)}
-                                                placeholder="Contoh: Muhammad Rizky Pratama"
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
+                                                placeholder="Nama lengkap anak"
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] outline-none"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">NIK Anak (16 digit) *</label>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                NIK Anak (16 digit) <span className="text-rose-500">*</span>
+                                            </label>
                                             <input
                                                 type="text"
                                                 value={nikAnak}
                                                 onChange={(e) => setNikAnak(e.target.value)}
-                                                placeholder="16 digit angka"
+                                                placeholder="16 digit NIK anak"
                                                 maxLength={16}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] outline-none"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">
-                                                Tanggal Lahir * <span className="font-normal text-slate-400 text-[11px]">(Acuan batasan kelompok per 1 Juli)</span>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Tanggal Lahir <span className="text-rose-500">*</span> <span className="font-normal text-slate-400 text-[11px]">(Acuan batasan kelompok per 1 Juli)</span>
                                             </label>
                                             <input
                                                 type="date"
@@ -2734,50 +3192,33 @@ export default function PortalOrangTua({
                                                     {statusKelayakanCalon?.pesan}
                                                 </div>
                                             ) : (
-                                                <div className="mt-1 text-[10.5px] text-slate-400">
-                                                    Ketentuan usia minimal per 1 Juli 2026: KB (min. 3 th / s.d. 1 Juli 2023), TK A (min. 4 th / s.d. 1 Juli 2022), TK B (min. 5 th / s.d. 1 Juli 2021).
+                                                <div className="mt-1 text-[10.5px] text-slate-500 leading-relaxed">
+                                                    Ketentuan usia minimal per 1 Juli 2026: KB (min. 3 th / s.d. 1 Juli), TK A (min. 4 th / s.d. 1 Juli), TK B (min. 5 th / s.d. 1 Juli).
                                                 </div>
                                             )}
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Jenis Kelamin *</label>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Jenis Kelamin <span className="text-rose-500">*</span>
+                                            </label>
                                             <select
                                                 value={jenisKelamin}
                                                 onChange={(e) => setJenisKelamin(e.target.value)}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] outline-none"
                                             >
                                                 <option value="Laki-laki">Laki-laki</option>
                                                 <option value="Perempuan">Perempuan</option>
                                             </select>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Jalur Pendaftaran *</label>
-                                            <select
-                                                value={jalurPendaftaran}
-                                                onChange={(e) => setJalurPendaftaran(e.target.value)}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                                            >
-                                                <option value="Daring">Daring (Online)</option>
-                                                <option value="Onsite">Datang Langsung (Onsite)</option>
-                                            </select>
-                                        </div>
-                                        {jalurPendaftaran === "Onsite" && (
+                                        <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs flex items-center justify-between">
                                             <div>
-                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Slot Kedatangan Onsite *</label>
-                                                <select
-                                                    value={selectedOnsiteSlot}
-                                                    onChange={(e) => setSelectedOnsiteSlot(e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                                                >
-                                                    <option value="">Pilih slot...</option>
-                                                    {slotList.map((s) => (
-                                                        <option key={s.idSlot} value={s.idSlot}>
-                                                            {formatTanggalSlot(s.tanggal)} · {formatJamSlot(s.jam)} WIB (Sisa: {s.sisa})
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <span className="font-bold text-[#095c51]">Jalur Pendaftaran:</span>
+                                                <span className="text-slate-700 ml-1.5 font-semibold">Daring (Online)</span>
                                             </div>
-                                        )}
+                                            <span className="text-[10px] text-teal-800 bg-teal-100 px-2 py-0.5 rounded-full font-bold">
+                                                Pendaftaran Online Mandiri
+                                            </span>
+                                        </div>
                                         {infoKelompokCalon && (
                                             <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs">
                                                 <div className="font-bold text-[#095c51]">Kelompok Otomatis: {infoKelompokCalon.nama}</div>
@@ -2787,57 +3228,63 @@ export default function PortalOrangTua({
                                         <button
                                             onClick={handleLanjutStep}
                                             disabled={isSubmitting}
-                                            className="w-full px-4 py-2.5 bg-[#095c51] text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                                            className="w-full px-4 py-2.5 bg-[#095c51] hover:bg-[#074840] text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50 transition"
                                         >
-                                            {isSubmitting ? "Memproses..." : "Lanjut"}
+                                            {isSubmitting ? "Memproses..." : "Lanjut ke Unggah Berkas"}
                                         </button>
                                     </div>
                                 )}
 
                                 {modalStep === 2 && (
                                     <div className="space-y-4">
-                                        <p className="text-xs text-slate-500">Semua berkas wajib diunggah (PDF/JPG/PNG, maks 5 MB)</p>
+                                        <p className="text-xs text-slate-500">Semua berkas anak wajib diunggah (PDF/JPG/PNG, maks 5 MB)</p>
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Akta Kelahiran *</label>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Akta Kelahiran <span className="text-rose-500">*</span>
+                                            </label>
                                             <input
                                                 type="file"
                                                 accept=".pdf,image/jpeg,image/png"
                                                 onChange={(e) => e.target.files?.[0] && setFileAkta(e.target.files[0])}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs cursor-pointer"
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs cursor-pointer bg-slate-50/50"
                                             />
                                             {fileAkta && <p className="text-xs text-emerald-600 mt-1">{fileAkta.name}</p>}
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Pas Foto 3x4 *</label>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Pas Foto 3x4 <span className="text-rose-500">*</span>
+                                            </label>
                                             <input
                                                 type="file"
                                                 accept="image/jpeg,image/png"
                                                 onChange={(e) => e.target.files?.[0] && setFileFoto(e.target.files[0])}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs cursor-pointer"
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs cursor-pointer bg-slate-50/50"
                                             />
                                             {fileFoto && <p className="text-xs text-emerald-600 mt-1">{fileFoto.name}</p>}
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Kartu Identitas Anak (KIA) *</label>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Kartu Identitas Anak (KIA) <span className="text-rose-500">*</span>
+                                            </label>
                                             <input
                                                 type="file"
                                                 accept=".pdf,image/jpeg,image/png"
                                                 onChange={(e) => e.target.files?.[0] && setFileKia(e.target.files[0])}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs cursor-pointer"
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs cursor-pointer bg-slate-50/50"
                                             />
                                             {fileKia && <p className="text-xs text-emerald-600 mt-1">{fileKia.name}</p>}
                                         </div>
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => setModalStep(1)}
-                                                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition"
                                             >
                                                 Kembali
                                             </button>
                                             <button
                                                 onClick={handleSaveNewChild}
                                                 disabled={isSubmitting}
-                                                className="flex-1 px-4 py-2.5 bg-[#095c51] text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                                                className="flex-1 px-4 py-2.5 bg-[#095c51] hover:bg-[#074840] text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50 transition"
                                             >
                                                 {isSubmitting ? "Menyimpan..." : "Simpan & Daftar"}
                                             </button>
@@ -3052,15 +3499,19 @@ export default function PortalOrangTua({
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
                                             >
                                                 <option value="">Pilih tagihan SPP...</option>
-                                                {familyChildren.flatMap((child) =>
-                                                    (child.tagihan || [])
+                                                {familyChildren.flatMap((child) => {
+                                                    const pendaftaran = (child.tagihan || []).find((t: any) => t.jenis === "PENDAFTARAN");
+                                                    const pendaftaranLunas = pendaftaran ? pendaftaran.status === "LUNAS" : child.status === "Aktif";
+                                                    if (!pendaftaranLunas) return [];
+
+                                                    return (child.tagihan || [])
                                                         .filter((t: any) => t.jenis === "SPP")
                                                         .map((t: any) => (
                                                             <option key={t.idTagihan} value={t.idTagihan}>
                                                                 {child.name} - SPP Bulan {NAMA_BULAN[t.bulan] || t.bulan} (Rp{(Number(t.nominal) - Number(t.diskon)).toLocaleString("id-ID")}) - {t.status}
                                                             </option>
-                                                        ))
-                                                )}
+                                                        ));
+                                                })}
                                             </select>
                                         </div>
                                         <div>
@@ -3390,13 +3841,13 @@ export default function PortalOrangTua({
                                 <div className="space-y-3.5">
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                            Alamat Tempat Tinggal Terdaftar *
+                                            Alamat Tempat Tinggal Terdaftar <span className="text-rose-500">*</span>
                                         </label>
                                         <textarea
                                             value={editAlamatInput}
                                             onChange={(e) => setEditAlamatInput(e.target.value)}
                                             rows={3}
-                                            placeholder="Contoh: Jl. KS. Tubun RT. 03/04 Kel. Pasar Baru Kec. Karawaci Kota Tangerang"
+                                            placeholder="Alamat domisili lengkap keluarga..."
                                             className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] focus:ring-1 focus:ring-[#095c51] outline-none"
                                         />
                                     </div>
@@ -3416,6 +3867,21 @@ export default function PortalOrangTua({
                                         </div>
                                         <div>
                                             <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Pekerjaan Ayah
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={editPekerjaanAyah}
+                                                onChange={(e) => setEditPekerjaanAyah(e.target.value)}
+                                                placeholder="Pekerjaan Ayah (misal: Karyawan Swasta)"
+                                                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] focus:ring-1 focus:ring-[#095c51] outline-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
                                                 Nama Ibu / Wali
                                             </label>
                                             <input
@@ -3423,6 +3889,18 @@ export default function PortalOrangTua({
                                                 value={editNamaIbu}
                                                 onChange={(e) => setEditNamaIbu(e.target.value)}
                                                 placeholder="Nama lengkap Ibu"
+                                                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] focus:ring-1 focus:ring-[#095c51] outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Pekerjaan Ibu
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={editPekerjaanIbu}
+                                                onChange={(e) => setEditPekerjaanIbu(e.target.value)}
+                                                placeholder="Pekerjaan Ibu (misal: Ibu Rumah Tangga)"
                                                 className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:border-[#095c51] focus:ring-1 focus:ring-[#095c51] outline-none"
                                             />
                                         </div>

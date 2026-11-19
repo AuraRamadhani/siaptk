@@ -6,7 +6,7 @@ import { sesiSekarang } from '@/lib/sesi';
 export async function GET() {
   try {
     const sesi = await sesiSekarang();
-    if (!sesi || !['KEPALA_SEKOLAH', 'BENDAHARA'].includes(sesi.peran)) {
+    if (!sesi || !['KEPALA_SEKOLAH', 'BENDAHARA', 'SUPER_ADMIN'].includes(sesi.peran)) {
       return NextResponse.json({ success: false, error: 'Akses ditolak.' }, { status: 403 });
     }
 
@@ -58,26 +58,29 @@ export async function GET() {
       .filter((t) => t.jenis !== 'SETOR')
       .reduce((s, t) => s + Number(t.nominal), 0);
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        siswa: { total: totalSiswa, aktif: siswaAktif, pendaftar },
-        keuangan: {
-          totalSaldo: rupiah(totalSaldo),
-          totalTagihan: rupiah(totalTagihan),
-          tunggakan: rupiah(tunggakan),
-          persenTertagih: totalTagihan > 0 ? Math.round(((totalTagihan - tunggakan) / totalTagihan) * 100) : 0,
-          tagihanLunas: lunas.length,
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          siswa: { total: totalSiswa, aktif: siswaAktif, pendaftar },
+          keuangan: {
+            totalSaldo: rupiah(totalSaldo),
+            totalTagihan: rupiah(totalTagihan),
+            tunggakan: rupiah(tunggakan),
+            persenTertagih: totalTagihan > 0 ? Math.round(((totalTagihan - tunggakan) / totalTagihan) * 100) : 0,
+            tagihanLunas: lunas.length,
+          },
+          bulanIni: {
+            setor: rupiah(setorBulanIni),
+            tarik: rupiah(tarikBulanIni),
+            jumlahTransaksi: transaksiBulanIni.length,
+            antreanVerifikasi,
+          },
+          perJenis,
         },
-        bulanIni: {
-          setor: rupiah(setorBulanIni),
-          tarik: rupiah(tarikBulanIni),
-          jumlahTransaksi: transaksiBulanIni.length,
-          antreanVerifikasi,
-        },
-        perJenis,
       },
-    });
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error) {
     console.error('API Dashboard Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });

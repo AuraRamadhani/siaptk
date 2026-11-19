@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET() {
   try {
     const sesi = await sesiSekarang();
-    if (!sesi || sesi.peran !== 'KEPALA_SEKOLAH') {
+    if (!sesi || !['KEPALA_SEKOLAH', 'SUPER_ADMIN'].includes(sesi.peran)) {
       return NextResponse.json(
         { success: false, error: 'Akses khusus Kepala Sekolah.' },
         { status: 403 }
@@ -17,7 +17,9 @@ export async function GET() {
     const [alumni, siswaAktif] = await Promise.all([
       ambilDaftarAlumni(),
       prisma.anak.findMany({
-        where: { status: 'AKTIF' },
+        where: {
+          OR: [{ status: 'AKTIF' }, { riwayatKelompok: { some: {} } }],
+        },
         include: {
           keluarga: { select: { namaAyah: true, namaIbu: true, noHp: true } },
           riwayatKelompok: {
@@ -29,12 +31,15 @@ export async function GET() {
       }),
     ]);
 
-    return NextResponse.json({
-      success: true,
-      database: 'alumni_siaptk',
-      data: alumni,
-      siswaAktif,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        database: 'alumni_siaptk',
+        data: alumni,
+        siswaAktif,
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (err: unknown) {
     console.error('API Alumni GET Error:', err);
     return NextResponse.json(

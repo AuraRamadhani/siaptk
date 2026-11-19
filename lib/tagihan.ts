@@ -136,12 +136,21 @@ export async function buatTagihanPendaftaran(
 /**
  * Memastikan siswa aktif memiliki tagihan SPP untuk bulan tertentu (default bulan berjalan).
  * Menggunakan nominal tarif SPP dinamis yang sedang aktif di sistem.
+ * Tagihan SPP HANYA boleh terbit jika pembayaran pendaftaran sudah diverifikasi LUNAS oleh Bendahara.
  */
 export async function pastikanTagihanSppBulanan(
   db: DbClient,
   idAnak: string,
   bulan = new Date().getMonth() + 1
 ) {
+  // Cek apakah pembayaran biaya pendaftaran calon siswa sudah diverifikasi LUNAS oleh Bendahara
+  const pendaftaran = await db.tagihan.findFirst({
+    where: { idAnak, jenis: 'PENDAFTARAN' },
+  });
+  if (pendaftaran && pendaftaran.status !== 'LUNAS') {
+    return null;
+  }
+
   const sudahAda = await db.tagihan.findFirst({
     where: { idAnak, jenis: 'SPP', bulan },
   });
@@ -161,14 +170,26 @@ export async function pastikanTagihanSppBulanan(
 }
 
 /**
- * Batch generate tagihan SPP untuk semua anak yang berstatus AKTIF (atau terdaftar).
+ * Batch generate tagihan SPP untuk semua anak yang berstatus AKTIF dan pendaftarannya sudah LUNAS.
  */
 export async function generateSppSemuaSiswa(
   db: DbClient,
   bulan = new Date().getMonth() + 1
 ) {
   const siswaList = await db.anak.findMany({
-    where: { status: 'AKTIF' },
+    where: {
+      OR: [
+        { status: 'AKTIF' },
+        { riwayatKelompok: { some: {} } },
+      ],
+      // Hanya anak yang pembayaran pendaftarannya sudah diverifikasi LUNAS oleh Bendahara
+      tagihan: {
+        some: {
+          jenis: 'PENDAFTARAN',
+          status: 'LUNAS',
+        },
+      },
+    },
     select: { idAnak: true, nama: true, idKeluarga: true },
   });
 

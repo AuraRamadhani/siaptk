@@ -64,7 +64,7 @@ export default function PanelAlumni() {
   const muatData = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/alumni').then((x) => x.json());
+      const res = await fetch('/api/alumni', { cache: 'no-store' }).then((x) => x.json());
       if (res.success) {
         setAlumni(res.data || []);
         setSiswaAktif(res.siswaAktif || []);

@@ -22,7 +22,7 @@ export default function PanelKelompok() {
   const [loading, setLoading] = useState(true);
 
   const muat = async () => {
-    const res = await fetch('/api/pengelompokan').then((x) => x.json());
+    const res = await fetch('/api/pengelompokan', { cache: 'no-store' }).then((x) => x.json());
     if (res.success) setData(res.data);
     else setPesan(res.error);
     setLoading(false);

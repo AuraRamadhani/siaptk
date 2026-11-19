@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- bentuk respons API belum punya tipe bersama; ditandai untuk dirapikan bertahap. */
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, CalendarDays, ClipboardList, CreditCard, MapPin, Phone } from 'lucide-react';
+import { Sparkles, CalendarDays, ClipboardList, CreditCard, MapPin, Phone, Info } from 'lucide-react';
 import logoSIAPTK from '@/app/assets/siap-tk-logo.png';
 
 interface InfoPublikProps {
@@ -133,9 +133,20 @@ export default function InfoPublik({
 
                 {/* Kartu Kelompok Usia */}
                 <div className="space-y-4">
-                    <div>
-                        <h3 className="text-lg font-bold text-slate-900">Kelompok ditentukan dari usia anak</h3>
-                        <p className="text-xs text-slate-500">Usia dihitung per 1 Juli 2026 sesuai database akademik.</p>
+                    <div className="space-y-2">
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-900">Kelompok ditentukan dari usia anak</h3>
+                            <p className="text-xs text-slate-500">Usia dihitung per 1 Juli 2026 sesuai database akademik.</p>
+                        </div>
+                        <div className="p-3.5 bg-teal-50 border border-teal-200/80 rounded-2xl flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-[#095c51] text-white flex items-center justify-center shrink-0">
+                                <Info className="w-4 h-4" />
+                            </div>
+                            <div className="text-xs">
+                                <span className="font-bold text-[#095c51]">Ketentuan usia minimal per 1 Juli 2026: </span>
+                                <span className="text-slate-700 font-medium">KB (min. 3 th / s.d. 1 Juli), TK A (min. 4 th / s.d. 1 Juli), TK B (min. 5 th / s.d. 1 Juli).</span>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

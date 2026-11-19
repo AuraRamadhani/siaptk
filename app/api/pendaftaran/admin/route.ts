@@ -6,6 +6,7 @@ import path from 'node:path';
 import { prisma } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
 import { otomatisKelompokAnak } from '@/lib/kelompok';
+import { buatTagihanPendaftaran } from '@/lib/tagihan';
 
 const PETUGAS = new Set(['BENDAHARA', 'KEPALA_SEKOLAH', 'SUPER_ADMIN']);
 
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
     let noHp = '';
     let email = '';
     let alamat = '';
+    let bayarTunai = true;
     let anakDataList: {
       nama: string;
       nik: string;
@@ -56,6 +58,11 @@ export async function POST(request: Request) {
       noHp = String(fd.get('noHp') || '').trim();
       email = String(fd.get('email') || '').trim();
       alamat = String(fd.get('alamat') || '').trim();
+
+      const rawBayarTunai = fd.get('bayarTunai');
+      if (rawBayarTunai !== null) {
+        bayarTunai = rawBayarTunai === 'true' || rawBayarTunai === '1';
+      }
 
       const rawCount = Number(fd.get('anakCount') || 1);
       const anakCount = Math.max(1, Math.min(rawCount, 10));
@@ -93,6 +100,9 @@ export async function POST(request: Request) {
       noHp = String(body.noHp || '').trim();
       email = String(body.email || '').trim();
       alamat = String(body.alamat || '').trim();
+      if (body.bayarTunai !== undefined) {
+        bayarTunai = Boolean(body.bayarTunai);
+      }
 
       const list = Array.isArray(body.anak) ? body.anak : [];
       anakDataList = list.map((a: any) => ({
@@ -159,6 +169,9 @@ export async function POST(request: Request) {
 
       const anakDibuat = [];
       for (const a of anakDataList) {
+        // Pada pendaftaran onsite, berkas fisik langsung diperiksa di loket pendaftaran
+        // Jika dibayar tunai langsung di tempat, status anak langsung AKTIF dan tagihan pendaftaran LUNAS
+        const statusBaru = bayarTunai ? 'AKTIF' : 'PENDAFTAR';
         const baru = await tx.anak.create({
           data: {
             idKeluarga: keluarga.idKeluarga,
@@ -166,23 +179,78 @@ export async function POST(request: Request) {
             nik: a.nik,
             tglLahir: new Date(a.tglLahir),
             jenisKelamin: a.jenisKelamin,
-            status: 'PENDAFTAR',
+            status: statusBaru,
             jalurPendaftaran: 'Onsite',
           },
         });
 
-        // Simpan lampiran berkas persyaratan ke tabel berkasAnak
+        // Berkas fisik (Akta, Foto, KIA) langsung diverifikasi di tempat oleh staf
         await tx.berkasAnak.create({
           data: {
             idAnak: baru.idAnak,
             akta: a.aktaFilename,
             foto: a.fotoFilename,
             kia: a.kiaFilename,
-            statusVerifikasi: 'MENUNGGU',
+            statusVerifikasi: 'DIVERIFIKASI',
           },
         });
 
         await otomatisKelompokAnak(tx, baru.idAnak, baru.tglLahir);
+
+        if (bayarTunai) {
+          // Buat tagihan pendaftaran langsung berstatus LUNAS
+          const tagihan = await tx.tagihan.create({
+            data: {
+              idAnak: baru.idAnak,
+              jenis: 'PENDAFTARAN',
+              bulan: null,
+              nominal: 1570000,
+              diskon: 0,
+              status: 'LUNAS',
+            },
+          });
+
+          // Catat bukti pembayaran tunai langsung di tempat
+          await tx.pembayaran.create({
+            data: {
+              idTagihan: tagihan.idTagihan,
+              metode: 'TUNAI',
+              diverifikasiOleh: sesi.nama || 'Bendahara',
+              catatanVerifikasi: 'Pembayaran tunai pendaftaran langsung di loket pendaftaran onsite.',
+            },
+          });
+        } else {
+          await buatTagihanPendaftaran(tx, baru.idAnak);
+        }
+
+        await tx.rekeningTabungan.upsert({
+          where: { idAnak: baru.idAnak },
+          update: {},
+          create: { idAnak: baru.idAnak, saldo: 0 },
+        });
+
+        try {
+          await tx.notifikasi.create({
+            data: {
+              idKeluarga: keluarga.idKeluarga,
+              tipe: 'PEMBAYARAN_DIVERIFIKASI',
+              judul: bayarTunai
+                ? 'Pendaftaran Siswa Baru Onsite Berhasil (Lunas)'
+                : 'Pendaftaran Siswa Baru Onsite Berhasil',
+              pesan: bayarTunai
+                ? `Alhamdulillah! Pendaftaran untuk ${baru.nama} telah berhasil diverifikasi langsung di tempat dan pembayaran tunai pendaftaran lunas. Ananda telah resmi terdaftar sebagai siswa aktif.`
+                : `Pendaftaran untuk ${baru.nama} berhasil disimpan dengan berkas fisik terverifikasi. Silakan menyelesaikan pembayaran pendaftaran.`,
+              dataReferensi: JSON.stringify({
+                jenis: 'PENDAFTARAN',
+                idAnak: baru.idAnak,
+                status: bayarTunai ? 'LUNAS' : 'BELUM_BAYAR',
+              }),
+            },
+          });
+        } catch (e) {
+          console.error('Gagal membuat notifikasi pendaftaran onsite:', e);
+        }
+
         anakDibuat.push(baru);
       }
 
@@ -192,7 +260,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       data: hasil,
-      message: `Pendaftaran onsite untuk ${hasil.anak.length} calon siswa berhasil disimpan beserta berkas persyaratannya. Menunggu verifikasi berkas oleh Kepala Sekolah.`,
+      message: bayarTunai
+        ? `Pendaftaran onsite untuk ${hasil.anak.length} siswa berhasil disimpan. Berkas langsung diverifikasi, pembayaran tunai pendaftaran lunas, dan status siswa aktif.`
+        : `Pendaftaran onsite untuk ${hasil.anak.length} calon siswa berhasil disimpan beserta berkas persyaratannya.`,
     });
   } catch (error) {
     console.error('API Pendaftaran Admin POST Error:', error);

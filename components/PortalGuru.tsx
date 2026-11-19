@@ -302,9 +302,9 @@ export default function PortalGuru({ namaGuru }: PortalGuruProps) {
     setLoading(true);
     try {
       const [t, l, a] = await Promise.all([
-        fetch('/api/tema-pembelajaran').then((x) => x.json()),
-        fetch('/api/laporan-mingguan').then((x) => x.json()),
-        fetch('/api/arsip?status=AKTIF').then((x) => x.json()),
+        fetch('/api/tema-pembelajaran', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/laporan-mingguan', { cache: 'no-store' }).then((x) => x.json()),
+        fetch('/api/arsip?status=AKTIF', { cache: 'no-store' }).then((x) => x.json()),
       ]);
       setTema(t.data || []);
       setLaporan(l.data || []);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma, KELUARGA_AMAN } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
 import { buatTagihanPendaftaran } from '@/lib/tagihan';
 
@@ -33,23 +33,10 @@ export async function GET(request: Request) {
     }
 
     if (status) {
-      if (status === 'AKTIF') {
-        // Ambil siswa yang berstatus AKTIF atau yang sudah memiliki rombel kelompok belajar
-        conditions.push({
-          OR: [
-            { status: 'AKTIF' },
-            { riwayatKelompok: { some: {} } },
-          ],
-        });
-      } else if (status === 'PENDAFTAR') {
-        // Tampilkan pendaftar atau siswa yang masih memiliki berkas menunggu verifikasi
-        conditions.push({
-          OR: [
-            { status: 'PENDAFTAR' },
-            { berkasAnak: { some: { statusVerifikasi: 'MENUNGGU' } } },
-          ],
-        });
-      }
+      // Filter ketat: status adalah satu-satunya sumber kebenaran (enum StatusAnak).
+      // Mencampur siswa ber-rombel / berberkas menunggu membuat siswa PENDAFTAR
+      // muncul di arsip aktif dan di daftar siswa guru untuk laporan mingguan.
+      conditions.push({ status });
     }
 
     if (tahunAjaran) {
@@ -121,6 +108,11 @@ export async function PATCH(request: Request) {
     }
 
     if (tipe === 'anak') {
+      const adaBerkas = await prisma.berkasAnak.findUnique({ where: { idBerkasAnak: id }, select: { idBerkasAnak: true } });
+      if (!adaBerkas) {
+        return NextResponse.json({ success: false, error: 'Berkas siswa tidak ditemukan.' }, { status: 404 });
+      }
+
       const updatedBerkas = await prisma.berkasAnak.update({
         where: { idBerkasAnak: id },
         data: { statusVerifikasi: status },
@@ -165,6 +157,10 @@ export async function PATCH(request: Request) {
         }
       }
     } else if (tipe === 'keluarga') {
+      const adaBerkas = await prisma.berkasKeluarga.findUnique({ where: { idBerkasKel: id }, select: { idBerkasKel: true } });
+      if (!adaBerkas) {
+        return NextResponse.json({ success: false, error: 'Berkas keluarga tidak ditemukan.' }, { status: 404 });
+      }
       await prisma.berkasKeluarga.update({ where: { idBerkasKel: id }, data: { statusVerifikasi: status } });
     } else {
       return NextResponse.json({ success: false, error: 'tipe harus anak atau keluarga.' }, { status: 400 });

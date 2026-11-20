@@ -27,6 +27,7 @@ import PanelPendaftaranAdmin from '@/components/PanelPendaftaranAdmin';
 import { useToast } from '@/components/Toast';
 import KuitansiDigitalModal, { DataKuitansi } from '@/components/KuitansiDigitalModal';
 import { NAMA_BULAN } from '@/lib/tagihan';
+import Paginasi, { usePaginasi } from '@/components/Paginasi';
 
 type Trx = {
   idTransaksi: string;
@@ -242,6 +243,15 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
   const [loadingTarif, setLoadingTarif] = useState<boolean>(false);
   const [kuitansiAktif, setKuitansiAktif] = useState<DataKuitansi | null>(null);
 
+  // Paginasi tiap tabel panjang supaya tidak perlu menggulir sampai bawah.
+  const halTagihanPending = usePaginasi(tagihanPending);
+  const halPenarikanPending = usePaginasi(penarikanPending);
+  const halTagihanLunas = usePaginasi(tagihanLunas);
+  const halTerverifikasi = usePaginasi(terverifikasi);
+  const halPenarikanSelesai = usePaginasi(penarikanSelesai);
+  const halRekening = usePaginasi(rekening);
+  const halAntrean = usePaginasi(antrean);
+
   // State untuk Pencatatan Transaksi Tunai Langsung (SPP, Tabungan, Pendaftaran)
   const [tunaiKategori, setTunaiKategori] = useState<'TABUNGAN' | 'SPP' | 'PENDAFTARAN'>('SPP');
   const [daftarSiswaTunai, setDaftarSiswaTunai] = useState<any[]>([]);
@@ -331,6 +341,27 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
       if (res.success) {
         setPesan(aksi === 'verifikasi' ? 'Diverifikasi.' : 'Ditolak.');
         tutupCatatanModal();
+        muat();
+      } else {
+        setPesan(res.error || 'Gagal memproses.');
+      }
+    } catch {
+      setPesan('Terjadi kesalahan.');
+    }
+  };
+
+  /** Putuskan tagihan yang berstatus menunggu verifikasi tetapi tidak punya rekaman pembayaran. */
+  const putuskanTagihanTanpaBukti = async (tg: TagihanPending, statusBaru: 'LUNAS' | 'BELUM_BAYAR') => {
+    const label = statusBaru === 'LUNAS' ? 'menandai LUNAS' : 'mengembalikan ke BELUM BAYAR';
+    if (!window.confirm(`Yakin ${label} tagihan ${tg.anak?.nama || ''} tanpa bukti transfer?`)) return;
+    try {
+      const res = await fetch(`/api/tagihan/${tg.idTagihan}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: statusBaru }),
+      }).then((x) => x.json());
+      if (res.success) {
+        setPesan(statusBaru === 'LUNAS' ? 'Tagihan ditandai lunas.' : 'Tagihan dikembalikan ke belum bayar.');
         muat();
       } else {
         setPesan(res.error || 'Gagal memproses.');
@@ -661,7 +692,7 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                   </tr>
                 </thead>
                 <tbody>
-                  {antrean.map((t) => (
+                  {halAntrean.data.map((t) => (
                     <tr key={t.idTransaksi} className="border-t border-slate-100">
                       <td className="px-6 py-3 font-semibold text-slate-900">
                         {t.tabungan?.anak?.nama || '-'}
@@ -714,6 +745,16 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
               </table>
             </div>
           )}
+          <Paginasi
+            halaman={halAntrean.halaman}
+            totalHalaman={halAntrean.totalHalaman}
+            total={halAntrean.total}
+            perHalaman={halAntrean.perHalaman}
+            mulai={halAntrean.mulai}
+            onHalaman={halAntrean.setHalaman}
+            onPerHalaman={halAntrean.gantiPerHalaman}
+            satuan="setoran"
+          />
         </div>
       )}
 
@@ -742,7 +783,7 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                   </tr>
                 </thead>
                 <tbody>
-                  {tagihanPending.map((tg) => {
+                  {halTagihanPending.data.map((tg) => {
                     const bayar = tg.pembayaran?.[tg.pembayaran.length - 1];
                     return (
                       <tr key={tg.idTagihan} className="border-t border-slate-100">
@@ -790,7 +831,24 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                               </button>
                             </>
                           ) : (
-                            <span className="text-slate-400">—</span>
+                            // Tagihan bisa berstatus menunggu verifikasi tanpa rekaman pembayaran
+                            // (mis. status diubah manual). Tetap beri jalan keluar agar tidak buntu.
+                            <>
+                              <button
+                                onClick={() => putuskanTagihanTanpaBukti(tg, 'LUNAS')}
+                                className="px-3 py-1.5 rounded-lg bg-[#095c51] text-white font-bold cursor-pointer"
+                                title="Tandai lunas tanpa bukti transfer"
+                              >
+                                Tandai Lunas
+                              </button>
+                              <button
+                                onClick={() => putuskanTagihanTanpaBukti(tg, 'BELUM_BAYAR')}
+                                className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 font-bold cursor-pointer"
+                                title="Kembalikan ke belum bayar"
+                              >
+                                Kembalikan
+                              </button>
+                            </>
                           )}
                         </td>
                       </tr>
@@ -800,6 +858,16 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
               </table>
             </div>
           )}
+          <Paginasi
+            halaman={halTagihanPending.halaman}
+            totalHalaman={halTagihanPending.totalHalaman}
+            total={halTagihanPending.total}
+            perHalaman={halTagihanPending.perHalaman}
+            mulai={halTagihanPending.mulai}
+            onHalaman={halTagihanPending.setHalaman}
+            onPerHalaman={halTagihanPending.gantiPerHalaman}
+            satuan="tagihan"
+          />
         </div>
       )}
 
@@ -830,7 +898,7 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                   </tr>
                 </thead>
                 <tbody>
-                  {penarikanPending.map((p) => (
+                  {halPenarikanPending.data.map((p) => (
                     <tr key={p.idPenarikan} className="border-t border-slate-100">
                       <td className="px-6 py-3 font-semibold text-slate-900">
                         {p.tabungan?.anak?.nama || '-'}
@@ -876,6 +944,16 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
               </table>
             </div>
           )}
+          <Paginasi
+            halaman={halPenarikanPending.halaman}
+            totalHalaman={halPenarikanPending.totalHalaman}
+            total={halPenarikanPending.total}
+            perHalaman={halPenarikanPending.perHalaman}
+            mulai={halPenarikanPending.mulai}
+            onHalaman={halPenarikanPending.setHalaman}
+            onPerHalaman={halPenarikanPending.gantiPerHalaman}
+            satuan="penarikan"
+          />
         </div>
       )}
 
@@ -968,7 +1046,7 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                     </tr>
                   </thead>
                   <tbody>
-                    {rekening.map((r) => {
+                    {halRekening.data.map((r) => {
                       const totalSetor = (r.transaksi || [])
                         .filter((tx) => tx.jenis === 'SETOR')
                         .reduce((acc, tx) => acc + Number(tx.nominal), 0);
@@ -1012,6 +1090,16 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                 </table>
               </div>
             )}
+            <Paginasi
+              halaman={halRekening.halaman}
+              totalHalaman={halRekening.totalHalaman}
+              total={halRekening.total}
+              perHalaman={halRekening.perHalaman}
+              mulai={halRekening.mulai}
+              onHalaman={halRekening.setHalaman}
+              onPerHalaman={halRekening.gantiPerHalaman}
+              satuan="rekening"
+            />
           </div>
 
           {/* History Pembayaran Tagihan Terverifikasi / Lunas */}
@@ -1042,7 +1130,7 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                     </tr>
                   </thead>
                   <tbody>
-                    {tagihanLunas.map((tg) => {
+                    {halTagihanLunas.data.map((tg) => {
                       const bayar = tg.pembayaran?.[tg.pembayaran.length - 1];
                       return (
                         <tr key={tg.idTagihan} className="border-t border-slate-100 hover:bg-slate-50/50 transition">
@@ -1119,6 +1207,16 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                 </table>
               </div>
             )}
+            <Paginasi
+              halaman={halTagihanLunas.halaman}
+              totalHalaman={halTagihanLunas.totalHalaman}
+              total={halTagihanLunas.total}
+              perHalaman={halTagihanLunas.perHalaman}
+              mulai={halTagihanLunas.mulai}
+              onHalaman={halTagihanLunas.setHalaman}
+              onPerHalaman={halTagihanLunas.gantiPerHalaman}
+              satuan="tagihan lunas"
+            />
           </div>
 
           {/* History Transaksi Tabungan Terverifikasi */}
@@ -1149,7 +1247,7 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                     </tr>
                   </thead>
                   <tbody>
-                    {terverifikasi.map((t) => {
+                    {halTerverifikasi.data.map((t) => {
                       const isTarik = t.jenis === 'TARIK';
                       return (
                         <tr key={t.idTransaksi} className="border-t border-slate-100 hover:bg-slate-50/50 transition">
@@ -1224,6 +1322,16 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                 </table>
               </div>
             )}
+            <Paginasi
+              halaman={halTerverifikasi.halaman}
+              totalHalaman={halTerverifikasi.totalHalaman}
+              total={halTerverifikasi.total}
+              perHalaman={halTerverifikasi.perHalaman}
+              mulai={halTerverifikasi.mulai}
+              onHalaman={halTerverifikasi.setHalaman}
+              onPerHalaman={halTerverifikasi.gantiPerHalaman}
+              satuan="transaksi"
+            />
           </div>
 
           {/* History Penarikan Terverifikasi */}
@@ -1255,7 +1363,7 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                     </tr>
                   </thead>
                   <tbody>
-                    {penarikanSelesai.map((p) => {
+                    {halPenarikanSelesai.data.map((p) => {
                       const namaSiswa = p.tabungan?.anak?.nama || 'Siswa';
                       const namaWali = p.tabungan?.anak?.keluarga?.namaAyah || p.tabungan?.anak?.keluarga?.namaIbu || null;
                       return (
@@ -1328,6 +1436,16 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                 </table>
               </div>
             )}
+            <Paginasi
+              halaman={halPenarikanSelesai.halaman}
+              totalHalaman={halPenarikanSelesai.totalHalaman}
+              total={halPenarikanSelesai.total}
+              perHalaman={halPenarikanSelesai.perHalaman}
+              mulai={halPenarikanSelesai.mulai}
+              onHalaman={halPenarikanSelesai.setHalaman}
+              onPerHalaman={halPenarikanSelesai.gantiPerHalaman}
+              satuan="penarikan"
+            />
           </div>
         </div>
       )}

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Paginasi, { usePaginasi } from '@/components/Paginasi';
 import {
   UserPlus,
   Users,
@@ -49,6 +50,7 @@ const WARNA_PERAN: Record<PeranStafKelola, string> = {
 export default function PortalSuperAdmin() {
   const { toast } = useToast();
   const [daftar, setDaftar] = useState<AkunStafItem[]>([]);
+  const halDaftar = usePaginasi(daftar);
   const [ringkasan, setRingkasan] = useState<RingkasanPeran[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -436,7 +438,7 @@ export default function PortalSuperAdmin() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {daftar.map((akun) => (
+                {halDaftar.data.map((akun) => (
                   <tr key={akun.idAkun} className="hover:bg-slate-50/50 transition">
                     <td className="px-6 py-4 font-bold text-slate-900">{akun.nama}</td>
                     <td className="px-4 py-4 text-slate-600">{akun.email}</td>
@@ -492,6 +494,16 @@ export default function PortalSuperAdmin() {
             </table>
           </div>
         )}
+        <Paginasi
+          halaman={halDaftar.halaman}
+          totalHalaman={halDaftar.totalHalaman}
+          total={halDaftar.total}
+          perHalaman={halDaftar.perHalaman}
+          mulai={halDaftar.mulai}
+          onHalaman={halDaftar.setHalaman}
+          onPerHalaman={halDaftar.gantiPerHalaman}
+          satuan="akun"
+        />
       </div>
 
       {/* Modal Reset Kata Sandi Staf */}

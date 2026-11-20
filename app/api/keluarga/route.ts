@@ -4,6 +4,7 @@ import { writeFile } from 'fs/promises';
 import path from 'path';
 import { mkdirSync } from 'fs';
 import { sesiSekarang } from '@/lib/sesi';
+import { batalkanPendaftaranKedaluwarsa } from '@/lib/pendaftaran';
 import { otomatisKelompokAnak } from '@/lib/kelompok';
 import { buatTagihanPendaftaran, pastikanTagihanSppBulanan, ambilTarifSpp } from '@/lib/tagihan';
 
@@ -35,6 +36,14 @@ export async function GET(request: Request) {
 
         const { searchParams } = new URL(request.url);
         const email = searchParams.get('email');
+
+        // Pendaftaran yang melewati batas bayar dibatalkan otomatis saat data dibuka.
+        // Kegagalan pembatalan tidak boleh menggagalkan pembacaan data keluarga.
+        try {
+            await batalkanPendaftaranKedaluwarsa(prisma);
+        } catch (err) {
+            console.error('Gagal membatalkan pendaftaran kedaluwarsa:', err);
+        }
 
         const sertakan = {
             anak: {
@@ -111,15 +120,18 @@ export async function GET(request: Request) {
                 perluMuatUlang = true;
             }
 
-            // Pastikan nominal tagihan SPP yang belum lunas selalu sinkron dengan tarif yang disetel Bendahara
-            for (const t of a.tagihan) {
-                if (t.jenis === 'SPP' && t.status !== 'LUNAS' && Number(t.nominal) !== tarifAktif) {
-                    await prisma.tagihan.update({
-                        where: { idTagihan: t.idTagihan },
-                        data: { nominal: tarifAktif },
-                    });
-                    perluMuatUlang = true;
-                }
+            // Pastikan nominal tagihan SPP yang belum lunas selalu sinkron dengan tarif yang disetel Bendahara.
+            // Daftar a.tagihan berasal dari pembacaan sebelum baris di atas menghapus tagihan SPP,
+            // jadi update tunggal bisa gagal karena barisnya sudah tidak ada -> pakai updateMany.
+            const perluSinkron = a.tagihan.some(
+                (t) => t.jenis === 'SPP' && t.status !== 'LUNAS' && Number(t.nominal) !== tarifAktif
+            );
+            if (perluSinkron) {
+                await prisma.tagihan.updateMany({
+                    where: { idAnak: a.idAnak, jenis: 'SPP', status: { not: 'LUNAS' } },
+                    data: { nominal: tarifAktif },
+                });
+                perluMuatUlang = true;
             }
         }
         if (perluMuatUlang) {

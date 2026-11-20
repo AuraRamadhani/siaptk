@@ -44,6 +44,7 @@ import {
 import logoSIAPTK from "../app/assets/siap-tk-logo.png";
 import { tentukanKelompokDariTglLahir, cekKelayakanTanggalLahir } from "@/lib/usia";
 import { useToast } from "@/components/Toast";
+import Paginasi, { usePaginasi } from "@/components/Paginasi";
 import KuitansiDigitalModal, { DataKuitansi } from "@/components/KuitansiDigitalModal";
 
 interface ParentViewProps {
@@ -928,14 +929,8 @@ export default function PortalOrangTua({
         }
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-600 text-sm font-bold">
-                Memuat data dari database SIAP TK...
-            </div>
-        );
-    }
-
+    // Cari anak aktif lebih dulu (tanpa early return) agar hook di bawah tetap
+    // dipanggil dengan urutan yang sama pada setiap render.
     const activeChild = familyChildren.find((c) => c.id === activeChildId) || familyChildren[0] || {
         id: "",
         name: "Belum ada data",
@@ -945,6 +940,19 @@ export default function PortalOrangTua({
         penarikanMutasi: [],
         laporanMingguan: [],
     };
+
+    // Paginasi daftar panjang agar tidak perlu menggulir sampai bawah.
+    const halAnak = usePaginasi(familyChildren);
+    const halMutasiTabungan = usePaginasi(activeChild.tabunganMutasi || []);
+    const halMutasiPenarikan = usePaginasi(activeChild.penarikanMutasi || []);
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-600 text-sm font-bold">
+                Memuat data dari database SIAP TK...
+            </div>
+        );
+    }
 
     // Nama orang tua sesuai data pendaftar
     const namaLengkapOrtu = keluarga
@@ -1385,9 +1393,13 @@ export default function PortalOrangTua({
                                                 </td>
                                             </tr>
                                         ) : (
-                                            familyChildren.map((ch) => {
+                                            halAnak.data.map((ch) => {
                                                 const berkasObj = Array.isArray(ch.berkasAnak) ? ch.berkasAnak[0] : ch.berkasAnak;
                                                 const statusBerkas = berkasObj?.statusVerifikasi || "MENUNGGU";
+                                                // Berkas dianggap sudah diunggah hanya bila ada isinya, bukan sekadar baris kosong.
+                                                const berkasTerkirim = Boolean(
+                                                    berkasObj && [berkasObj.akta, berkasObj.foto, berkasObj.kia].some(Boolean)
+                                                );
                                                 const tagihanPendaftaran = (ch.tagihan || []).find((t: any) => t.jenis === "PENDAFTARAN");
                                                 const nominalPendaftaran = tagihanPendaftaran
                                                     ? Number(tagihanPendaftaran.nominal) - Number(tagihanPendaftaran.diskon || 0)
@@ -1430,10 +1442,15 @@ export default function PortalOrangTua({
                                                                         <AlertCircle className="w-3 h-3 text-rose-600" />
                                                                         <span>Ditolak Kepala Sekolah</span>
                                                                     </span>
-                                                                ) : (
+                                                                ) : berkasTerkirim ? (
                                                                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-semibold text-[10px]">
                                                                         <Clock className="w-3 h-3 text-amber-600" />
                                                                         <span>Menunggu Verifikasi</span>
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold text-[10px]">
+                                                                        <AlertCircle className="w-3 h-3 text-slate-500" />
+                                                                        <span>Berkas Belum Diunggah</span>
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -1473,10 +1490,14 @@ export default function PortalOrangTua({
                                                         </div>
                                                     </td>
                                                     <td className="p-5">
-                                                        {statusBerkas !== "DIVERIFIKASI" ? (
+                                                        {!tagihanPendaftaran && ch.status === "Aktif" ? (
                                                             <div className="flex flex-col gap-1">
-                                                                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold text-[10px] w-fit">
-                                                                    Menunggu Verifikasi Berkas
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] w-fit">
+                                                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                    <span>Sudah Aktif</span>
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-500">
+                                                                    Tidak ada tagihan pendaftaran tertunggak
                                                                 </span>
                                                             </div>
                                                         ) : tagihanPendaftaran?.status === "LUNAS" ? (
@@ -1555,6 +1576,13 @@ export default function PortalOrangTua({
                                                                 {ch.deadlineBayar && (
                                                                     <span className="text-[10px] text-amber-700">Deadline: {ch.deadlineBayar}</span>
                                                                 )}
+                                                                {statusBerkas !== "DIVERIFIKASI" && (
+                                                                    <span className="text-[10px] text-slate-500">
+                                                                        {berkasTerkirim
+                                                                            ? "Menunggu persetujuan berkas oleh kepala sekolah"
+                                                                            : "Unggah Akta, Foto, dan KIA agar berkas dapat diperiksa"}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </td>
@@ -1578,6 +1606,16 @@ export default function PortalOrangTua({
                                     </tbody>
                                 </table>
                             </div>
+                            <Paginasi
+                                halaman={halAnak.halaman}
+                                totalHalaman={halAnak.totalHalaman}
+                                total={halAnak.total}
+                                perHalaman={halAnak.perHalaman}
+                                mulai={halAnak.mulai}
+                                onHalaman={halAnak.setHalaman}
+                                onPerHalaman={halAnak.gantiPerHalaman}
+                                satuan="anak"
+                            />
                         </div>
                     )}
 
@@ -1610,6 +1648,9 @@ export default function PortalOrangTua({
 
                         const detailBerkasObj = Array.isArray(detailChild.berkasAnak) ? detailChild.berkasAnak[0] : detailChild.berkasAnak;
                         const detailStatusBerkas = detailBerkasObj?.statusVerifikasi || "MENUNGGU";
+                        const detailBerkasTerkirim = Boolean(
+                            detailBerkasObj && [detailBerkasObj.akta, detailBerkasObj.foto, detailBerkasObj.kia].some(Boolean)
+                        );
                         const detailTagihanPendaftaran = (detailChild.tagihan || []).find((t: any) => t.jenis === "PENDAFTARAN");
                         const detailNominalPendaftaran = detailTagihanPendaftaran
                             ? Number(detailTagihanPendaftaran.nominal) - Number(detailTagihanPendaftaran.diskon || 0)
@@ -1726,9 +1767,13 @@ export default function PortalOrangTua({
                                                                 <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px]">
                                                                     Ditolak Kepala Sekolah
                                                                 </span>
-                                                            ) : (
+                                                            ) : detailBerkasTerkirim ? (
                                                                 <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px]">
                                                                     Menunggu Verifikasi
+                                                                </span>
+                                                            ) : (
+                                                                <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px]">
+                                                                    Berkas Belum Diunggah
                                                                 </span>
                                                             )}
                                                         </dd>
@@ -1736,9 +1781,9 @@ export default function PortalOrangTua({
                                                     <div className="flex justify-between items-center gap-4">
                                                         <dt className="text-slate-500">Biaya Pendaftaran</dt>
                                                         <dd className="text-right">
-                                                            {detailStatusBerkas !== "DIVERIFIKASI" ? (
-                                                                <span className="text-slate-500 font-medium text-[11px]">
-                                                                    Menunggu Verifikasi Berkas
+                                                            {!detailTagihanPendaftaran && detailChild.status === "Aktif" ? (
+                                                                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                                                    Sudah Aktif
                                                                 </span>
                                                             ) : detailTagihanPendaftaran?.status === "LUNAS" ? (
                                                                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
@@ -2565,7 +2610,7 @@ export default function PortalOrangTua({
                                     </p>
                                 ) : (
                                     <div className="space-y-3">
-                                        {activeChild.tabunganMutasi.map((mut: any) => {
+                                        {halMutasiTabungan.data.map((mut: any) => {
                                             const adalahSetor = mut.jenis === "SETOR";
                                             return (
                                                 <div
@@ -2617,6 +2662,16 @@ export default function PortalOrangTua({
                                         })}
                                     </div>
                                 )}
+                                <Paginasi
+                                    halaman={halMutasiTabungan.halaman}
+                                    totalHalaman={halMutasiTabungan.totalHalaman}
+                                    total={halMutasiTabungan.total}
+                                    perHalaman={halMutasiTabungan.perHalaman}
+                                    mulai={halMutasiTabungan.mulai}
+                                    onHalaman={halMutasiTabungan.setHalaman}
+                                    onPerHalaman={halMutasiTabungan.gantiPerHalaman}
+                                    satuan="transaksi"
+                                />
                             </div>
 
                             {/* Riwayat Penarikan Tabungan */}
@@ -2634,7 +2689,7 @@ export default function PortalOrangTua({
                                     </p>
                                 ) : (
                                     <div className="space-y-3">
-                                        {activeChild.penarikanMutasi.map((mut: any) => (
+                                        {halMutasiPenarikan.data.map((mut: any) => (
                                             <div
                                                 key={mut.id}
                                                 className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex justify-between items-center"
@@ -2673,6 +2728,16 @@ export default function PortalOrangTua({
                                         ))}
                                     </div>
                                 )}
+                                <Paginasi
+                                    halaman={halMutasiPenarikan.halaman}
+                                    totalHalaman={halMutasiPenarikan.totalHalaman}
+                                    total={halMutasiPenarikan.total}
+                                    perHalaman={halMutasiPenarikan.perHalaman}
+                                    mulai={halMutasiPenarikan.mulai}
+                                    onHalaman={halMutasiPenarikan.setHalaman}
+                                    onPerHalaman={halMutasiPenarikan.gantiPerHalaman}
+                                    satuan="penarikan"
+                                />
                             </div>
                         </div>
                     )}

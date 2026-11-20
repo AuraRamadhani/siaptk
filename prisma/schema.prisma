@@ -297,6 +297,7 @@ enum JenisBooking {
 enum StatusAnak {
   PENDAFTAR
   AKTIF
+  LULUS
 }
 
 enum JenisTagihan {

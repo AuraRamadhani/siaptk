@@ -74,6 +74,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "nominal harus lebih dari 0" }, { status: 400 });
     }
 
+    // Periksa siswa lebih dulu: tanpa ini, idAnak tak dikenal berujung galat
+    // foreign key dan pengguna hanya melihat "Kesalahan server".
+    const siswa = await prisma.anak.findUnique({ where: { idAnak }, select: { idAnak: true } });
+    if (!siswa) {
+      return NextResponse.json({ success: false, error: "Siswa tidak ditemukan." }, { status: 404 });
+    }
+
     const tagihan = await prisma.tagihan.create({
       data: {
         idAnak,

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Eye, Download, X } from 'lucide-react';
+import Paginasi, { usePaginasi } from '@/components/Paginasi';
 
 type TahunAjaran = { idTahunAjaran: string; periode: string };
 type Riwayat = { idRiwayat: string; kelompok: { nama: string }; tahunAjaran: { periode: string } };
@@ -45,6 +46,7 @@ export default function PanelArsip({
   const [pesan, setPesan] = useState('');
   const [loading, setLoading] = useState(false);
   const [previewBerkas, setPreviewBerkas] = useState<{ label: string; url: string } | null>(null);
+  const halData = usePaginasi(data);
 
   const muat = async () => {
     setLoading(true);
@@ -203,7 +205,7 @@ export default function PanelArsip({
                 </tr>
               </thead>
               <tbody>
-                {data.map((a) => {
+                {halData.data.map((a) => {
                   const berkas = Array.isArray(a.berkasAnak) ? a.berkasAnak[0] : a.berkasAnak;
                   const kkRow = a.keluarga?.berkasKeluarga?.find((b) => b.jenis === 'KK');
                   const ktpRow = a.keluarga?.berkasKeluarga?.find((b) => b.jenis === 'KTP_ORTU');
@@ -345,6 +347,16 @@ export default function PanelArsip({
             </table>
           </div>
         )}
+        <Paginasi
+          halaman={halData.halaman}
+          totalHalaman={halData.totalHalaman}
+          total={halData.total}
+          perHalaman={halData.perHalaman}
+          mulai={halData.mulai}
+          onHalaman={halData.setHalaman}
+          onPerHalaman={halData.gantiPerHalaman}
+          satuan="siswa"
+        />
       </div>
 
       {/* MODAL PREVIEW BERKAS */}

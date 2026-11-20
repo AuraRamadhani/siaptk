@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { tentukanKelompokDariTglLahir } from '@/lib/usia';
 import { useToast } from '@/components/Toast';
+import Paginasi, { usePaginasi } from '@/components/Paginasi';
 
 type KodeKelas = 'KB' | 'A' | 'B';
 type FilterKelas = 'SEMUA' | KodeKelas;
@@ -375,6 +376,9 @@ export default function PortalGuru({ namaGuru }: PortalGuruProps) {
       return true;
     });
   }, [laporan, filterKelasLaporan, cariLaporan]);
+
+  const halLaporan = usePaginasi(laporanTersaring);
+  const halTema = usePaginasi(tema);
 
   // Handler saat memilih Tema Pembelajaran di form laporan
   const handlePilihTema = (id: string) => {
@@ -1471,7 +1475,7 @@ export default function PortalGuru({ namaGuru }: PortalGuruProps) {
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-100">
-                    {laporanTersaring.map((l) => {
+                    {halLaporan.data.map((l) => {
                       const k = kodeKelasAnak(l.anak || {});
                       const isBeingEdited = editingLaporanId === l.idLaporan;
                       const det = l.detailLaporan;
@@ -1573,6 +1577,16 @@ export default function PortalGuru({ namaGuru }: PortalGuruProps) {
                     })}
                   </div>
                 )}
+                <Paginasi
+                  halaman={halLaporan.halaman}
+                  totalHalaman={halLaporan.totalHalaman}
+                  total={halLaporan.total}
+                  perHalaman={halLaporan.perHalaman}
+                  mulai={halLaporan.mulai}
+                  onHalaman={halLaporan.setHalaman}
+                  onPerHalaman={halLaporan.gantiPerHalaman}
+                  satuan="laporan"
+                />
               </div>
             </div>
           )}
@@ -1761,7 +1775,7 @@ export default function PortalGuru({ namaGuru }: PortalGuruProps) {
                   <div className="p-8 text-center text-xs text-slate-400">Belum ada tema yang ditambahkan.</div>
                 ) : (
                   <div className="divide-y divide-slate-100">
-                    {tema.map((t) => {
+                    {halTema.data.map((t) => {
                       const subList = parseSubtemaHarian(t.subtemaHarian);
                       const isEditing = editingTemaId === t.idTema;
 
@@ -1833,6 +1847,16 @@ export default function PortalGuru({ namaGuru }: PortalGuruProps) {
                     })}
                   </div>
                 )}
+                <Paginasi
+                  halaman={halTema.halaman}
+                  totalHalaman={halTema.totalHalaman}
+                  total={halTema.total}
+                  perHalaman={halTema.perHalaman}
+                  mulai={halTema.mulai}
+                  onHalaman={halTema.setHalaman}
+                  onPerHalaman={halTema.gantiPerHalaman}
+                  satuan="tema"
+                />
               </div>
             </div>
           )}

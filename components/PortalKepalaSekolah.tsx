@@ -12,10 +12,12 @@ import {
   Clock,
   X,
   RefreshCw,
+  Eye,
 } from 'lucide-react';
 import PanelKelompok from '@/components/PanelKelompok';
 import PanelArsip from '@/components/PanelArsip';
 import PanelAlumni from '@/components/PanelAlumni';
+import Paginasi, { usePaginasi } from '@/components/Paginasi';
 
 type Dashboard = {
   siswa: { total: number; aktif: number; pendaftar: number };
@@ -83,6 +85,10 @@ export default function PortalKepalaSekolah() {
   const [loading, setLoading] = useState(true);
   const [showAlasanModal, setShowAlasanModal] = useState<{ idAnak: string; nama: string; aksi: 'terima' | 'tolak' } | null>(null);
   const [alasanTolak, setAlasanTolak] = useState('');
+  const [galatAlasan, setGalatAlasan] = useState(false);
+  const [detailTolak, setDetailTolak] = useState<{ nama: string; alasan: string } | null>(null);
+
+  const halPendaftar = usePaginasi(pendaftar);
 
   const muat = async () => {
     setLoading(true);
@@ -106,18 +112,22 @@ export default function PortalKepalaSekolah() {
   const bukaModalAlasan = (idAnak: string, nama: string, aksi: 'terima' | 'tolak') => {
     setShowAlasanModal({ idAnak, nama, aksi });
     setAlasanTolak('');
+    setGalatAlasan(false);
   };
 
   const tutupModalAlasan = () => {
     setShowAlasanModal(null);
     setAlasanTolak('');
+    setGalatAlasan(false);
   };
 
   const tetapkan = async (idAnak: string, aksi: 'terima' | 'tolak') => {
     if (aksi === 'tolak' && !alasanTolak.trim()) {
-      setPesan('Alasan penolakan pendaftaran wajib diisi.');
+      // Ditampilkan tepat di bawah kolom isian, karena pesan di halaman tertutup modal.
+      setGalatAlasan(true);
       return;
     }
+    setGalatAlasan(false);
     const body: any = { idAnak, aksi };
     if (aksi === 'tolak') {
       body.alasanPenolakan = alasanTolak.trim();
@@ -325,7 +335,7 @@ export default function PortalKepalaSekolah() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {pendaftar.map((p) => (
+                        {halPendaftar.data.map((p) => (
                           <tr key={p.idAnak} className="hover:bg-slate-50/50 transition">
                             <td className="px-6 py-3.5 font-bold text-slate-900">{p.nama}</td>
                             <td className="px-4 py-3.5 text-slate-600 font-mono text-[11px]">{p.nik}</td>
@@ -344,38 +354,50 @@ export default function PortalKepalaSekolah() {
                             </td>
                             <td className="px-4 py-3.5 text-slate-600">
                               {p.alasanPenolakan ? (
-                                <span className="px-2.5 py-1 bg-rose-100 text-rose-700 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
+                                <span
+                                  className="px-2.5 py-1 bg-rose-100 text-rose-700 rounded-full text-[10px] font-bold inline-flex items-center gap-1"
+                                  title={p.alasanPenolakan}
+                                >
                                   <AlertCircle className="w-3 h-3 text-rose-600" />
                                   <span>Ditolak</span>
                                 </span>
-                              ) : (
-                                <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-amber-600" />
+                              ) : p.deadlineBayar ? (
+                                <span className="px-2.5 py-1 bg-sky-100 text-sky-800 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-sky-600" />
                                   <span>Menunggu Bayar</span>
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-slate-500" />
+                                  <span>Belum Ditetapkan</span>
                                 </span>
                               )}
                             </td>
-                            <td className="px-6 py-3.5 text-right space-x-2">
-                              {p.alasanPenolakan ? (
-                                <span className="text-rose-600 text-xs italic">
-                                  Ditolak: {p.alasanPenolakan.slice(0, 30)}...
-                                </span>
-                              ) : (
-                                <>
+                            <td className="px-6 py-3.5 text-right">
+                              <div className="inline-flex items-center gap-2">
+                                {p.alasanPenolakan && (
                                   <button
-                                    onClick={() => bukaModalAlasan(p.idAnak, p.nama, 'terima')}
-                                    className="px-3.5 py-1.5 rounded-xl bg-[#095c51] hover:bg-[#074840] text-white text-xs font-bold cursor-pointer transition shadow-xs"
+                                    onClick={() => setDetailTolak({ nama: p.nama, alasan: String(p.alasanPenolakan) })}
+                                    title="Lihat alasan penolakan"
+                                    aria-label={`Lihat alasan penolakan ${p.nama}`}
+                                    className="w-8 h-8 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center cursor-pointer transition"
                                   >
-                                    Terima
+                                    <Eye className="w-4 h-4" />
                                   </button>
-                                  <button
-                                    onClick={() => bukaModalAlasan(p.idAnak, p.nama, 'tolak')}
-                                    className="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold cursor-pointer transition shadow-xs"
-                                  >
-                                    Tolak
-                                  </button>
-                                </>
-                              )}
+                                )}
+                                <button
+                                  onClick={() => bukaModalAlasan(p.idAnak, p.nama, 'terima')}
+                                  className="px-3.5 py-1.5 rounded-xl bg-[#095c51] hover:bg-[#074840] text-white text-xs font-bold cursor-pointer transition shadow-xs"
+                                >
+                                  {p.alasanPenolakan ? 'Terima Ulang' : p.deadlineBayar ? 'Perpanjang' : 'Terima'}
+                                </button>
+                                <button
+                                  onClick={() => bukaModalAlasan(p.idAnak, p.nama, 'tolak')}
+                                  className="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold cursor-pointer transition shadow-xs"
+                                >
+                                  {p.alasanPenolakan ? 'Ubah Alasan' : 'Tolak'}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -383,11 +405,55 @@ export default function PortalKepalaSekolah() {
                     </table>
                   </div>
                 )}
+                <Paginasi
+                  halaman={halPendaftar.halaman}
+                  totalHalaman={halPendaftar.totalHalaman}
+                  total={halPendaftar.total}
+                  perHalaman={halPendaftar.perHalaman}
+                  mulai={halPendaftar.mulai}
+                  onHalaman={halPendaftar.setHalaman}
+                  onPerHalaman={halPendaftar.gantiPerHalaman}
+                  satuan="calon siswa"
+                />
               </div>
             </>
           )}
         </div>
       </div>
+
+      {/* MODAL LIHAT ALASAN PENOLAKAN */}
+      {detailTolak && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Alasan Penolakan</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Calon siswa: <span className="font-semibold text-slate-800">{detailTolak.nama}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setDetailTolak(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                aria-label="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed break-words">
+              {detailTolak.alasan}
+            </p>
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => setDetailTolak(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL ALASAN TOLAK / KONFIRMASI TERIMA */}
       {showAlasanModal && (
@@ -409,14 +475,35 @@ export default function PortalKepalaSekolah() {
             </p>
             {showAlasanModal.aksi === 'tolak' && (
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Catatan Alasan Penolakan *</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Catatan Alasan Penolakan <span className="text-rose-500">*</span>
+                </label>
                 <textarea
                   value={alasanTolak}
-                  onChange={(e) => setAlasanTolak(e.target.value)}
+                  onChange={(e) => {
+                    setAlasanTolak(e.target.value);
+                    if (e.target.value.trim()) setGalatAlasan(false);
+                  }}
                   rows={4}
                   placeholder="Tulis alasan penolakan secara jelas (wajib diisi)..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-[#095c51]"
+                  aria-invalid={galatAlasan}
+                  aria-describedby={galatAlasan ? 'galat-alasan-tolak' : undefined}
+                  className={`w-full px-3 py-2 border rounded-xl text-xs outline-none transition ${
+                    galatAlasan
+                      ? 'border-rose-400 bg-rose-50/40 focus:border-rose-500'
+                      : 'border-slate-200 focus:border-[#095c51]'
+                  }`}
                 />
+                {galatAlasan && (
+                  <p
+                    id="galat-alasan-tolak"
+                    role="alert"
+                    className="mt-1.5 text-[11px] font-semibold text-rose-600 flex items-start gap-1"
+                  >
+                    <span aria-hidden="true">⚠</span>
+                    <span>Alasan penolakan wajib diisi sebelum menyimpan.</span>
+                  </p>
+                )}
               </div>
             )}
             <div className="flex gap-2 justify-end pt-2">

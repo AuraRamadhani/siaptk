@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { StatusTagihan } from "@/app/generated/prisma/client";
 import { prisma, KELUARGA_AMAN } from "@/lib/prisma";
 import { sesiSekarang } from "@/lib/sesi";
 
@@ -55,15 +56,49 @@ export async function PATCH(
 
     const { idTagihan } = await params;
     const body = await request.json();
-    const { status } = body;
+    const { status, nominal, diskon } = body;
 
-    if (!["BELUM_BAYAR", "MENUNGGU_VERIFIKASI", "LUNAS", "DIBATALKAN"].includes(status)) {
+    if (status !== undefined && !["BELUM_BAYAR", "MENUNGGU_VERIFIKASI", "LUNAS", "DIBATALKAN"].includes(status)) {
       return NextResponse.json({ success: false, error: "status tidak valid" }, { status: 400 });
+    }
+
+    // Status menunggu verifikasi hanya boleh lahir dari pembayaran yang benar-benar
+    // dicatat. Bila diubah langsung, bendahara melihat antrean tanpa bukti dan
+    // tombol Verifikasi/Tolak tidak pernah muncul.
+    if (status === "MENUNGGU_VERIFIKASI") {
+      const adaBayar = await prisma.pembayaran.count({ where: { idTagihan } });
+      if (adaBayar === 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Status menunggu verifikasi hanya dapat terbentuk dari pembayaran yang dicatat. Gunakan LUNAS atau BELUM_BAYAR.",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    const ubah: { status?: StatusTagihan; nominal?: number; diskon?: number } = {};
+    if (status !== undefined) ubah.status = status;
+    if (nominal !== undefined) {
+      if (!(Number(nominal) > 0)) {
+        return NextResponse.json({ success: false, error: "nominal harus lebih dari 0" }, { status: 400 });
+      }
+      ubah.nominal = Number(nominal);
+    }
+    if (diskon !== undefined) ubah.diskon = Number(diskon);
+    if (Object.keys(ubah).length === 0) {
+      return NextResponse.json({ success: false, error: "Tidak ada data yang diubah." }, { status: 400 });
+    }
+
+    const ada = await prisma.tagihan.findUnique({ where: { idTagihan }, select: { idTagihan: true } });
+    if (!ada) {
+      return NextResponse.json({ success: false, error: "Tagihan tidak ditemukan." }, { status: 404 });
     }
 
     const tagihan = await prisma.tagihan.update({
       where: { idTagihan },
-      data: { status },
+      data: ubah,
     });
 
     return NextResponse.json({
@@ -87,6 +122,11 @@ export async function DELETE(
     }
 
     const { idTagihan } = await params;
+    const ada = await prisma.tagihan.findUnique({ where: { idTagihan }, select: { idTagihan: true } });
+    if (!ada) {
+      return NextResponse.json({ success: false, error: "Tagihan tidak ditemukan." }, { status: 404 });
+    }
+
     const tagihan = await prisma.tagihan.update({
       where: { idTagihan },
       data: { status: "DIBATALKAN" },

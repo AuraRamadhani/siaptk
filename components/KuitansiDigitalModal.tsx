@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, Printer, Download, CheckCircle2 } from 'lucide-react';
+import { X, Printer, Download, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { LOGO_NUR_HABIB } from '@/lib/logoNurHabib';
 
 export type DataKuitansi = {
@@ -41,6 +41,16 @@ function angkaKeTerbilang(nilai: number): string {
 }
 
 export default function KuitansiDigitalModal({ data, onClose }: Props) {
+  // Tombol Escape menutup kuitansi, sama seperti tombol Kembali.
+  React.useEffect(() => {
+    if (!data) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [data, onClose]);
+
   if (!data) return null;
 
   // Nama siswa & no kuitansi selalu aman dari undefined/kosong
@@ -458,12 +468,24 @@ export default function KuitansiDigitalModal({ data, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5"
+      onClick={(e) => {
+        // Klik latar gelap menutup modal, kecuali saat menekan isi kuitansi.
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="presentation"
+    >
       {/* Container Kuitansi Modal */}
-      <div className="bg-slate-100 rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-300 overflow-hidden my-6 animate-in fade-in zoom-in-95">
+      <div
+        className="bg-slate-100 rounded-2xl max-w-3xl w-full max-h-[95vh] flex flex-col shadow-2xl border border-slate-300 overflow-hidden animate-in fade-in zoom-in-95"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Kuitansi Pembayaran Resmi"
+      >
         
-        {/* Toolbar Aksi Atas */}
-        <div className="px-6 py-3.5 bg-slate-800 text-white flex items-center justify-between">
+        {/* Toolbar Aksi Atas — selalu terlihat, isi kuitansi yang menggulir */}
+        <div className="shrink-0 px-4 sm:px-6 py-3 bg-slate-800 text-white flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
             <div>
@@ -475,7 +497,7 @@ export default function KuitansiDigitalModal({ data, onClose }: Props) {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <button
               type="button"
               onClick={unduhAtauCetakPDF}
@@ -487,16 +509,27 @@ export default function KuitansiDigitalModal({ data, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
+              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              title="Tutup dan kembali"
+              aria-label="Tutup kuitansi dan kembali"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Kembali</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
               className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition cursor-pointer"
               title="Tutup Modal"
+              aria-label="Tutup"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* PRATINJAU FISIK KUITANSI (Format Resmi Indonesia) */}
-        <div className="p-4 sm:p-8 overflow-x-auto flex justify-center bg-slate-200">
+        {/* PRATINJAU FISIK KUITANSI (Format Resmi Indonesia) — bagian yang menggulir */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto p-3 sm:p-6 flex justify-start sm:justify-center bg-slate-200">
           <div
             className="w-full max-w-2xl bg-white p-7 sm:p-10 shadow-lg border-2 border-slate-800 text-slate-900"
             style={{ fontFamily: "'Times New Roman', Times, serif" }}
@@ -657,16 +690,28 @@ export default function KuitansiDigitalModal({ data, onClose }: Props) {
         </div>
 
         {/* Footer Modal */}
-        <div className="px-6 py-3 bg-white border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-          <span>Klik tombol <strong>Download PDF / Cetak</strong> untuk mencetak atau menyimpan dokumen kuitansi dalam format PDF resmi A4.</span>
-          <button
-            type="button"
-            onClick={unduhAtauCetakPDF}
-            className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Cetak Dokumen</span>
-          </button>
+        <div className="shrink-0 px-4 sm:px-6 py-3 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <span className="flex-1 min-w-[200px]">
+            Klik <strong>Download PDF / Cetak</strong> untuk mencetak atau menyimpan kuitansi (A4).
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={unduhAtauCetakPDF}
+              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Cetak Dokumen</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Kembali</span>
+            </button>
+          </div>
         </div>
 
       </div>

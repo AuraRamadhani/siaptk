@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma, KELUARGA_AMAN } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
+import { batalkanPendaftaranKedaluwarsa, hitungDeadline } from '@/lib/pendaftaran';
+import { buatTagihanPendaftaran } from '@/lib/tagihan';
 
 const KEPALA = 'KEPALA_SEKOLAH';
-
-const DEADLINE_HARI = 14; // 2 minggu
 
 // GET /api/pendaftaran -> daftar calon siswa (penetapan penerimaan oleh kepala sekolah)
 export async function GET() {
@@ -12,6 +12,15 @@ export async function GET() {
     const sesi = await sesiSekarang();
     if (!sesi || !['KEPALA_SEKOLAH', 'BENDAHARA', 'SUPER_ADMIN'].includes(sesi.peran)) {
       return NextResponse.json({ success: false, error: 'Hanya staf yang berwenang yang dapat melihat daftar calon siswa.' }, { status: 403 });
+    }
+
+    // Pendaftaran yang melewati batas bayar dibatalkan otomatis setiap kali
+    // daftar dibuka, supaya tidak bergantung pada cron yang terpisah.
+    // Kegagalan pembatalan tidak boleh menggagalkan pembacaan daftar.
+    try {
+      await batalkanPendaftaranKedaluwarsa(prisma);
+    } catch (err) {
+      console.error('Gagal membatalkan pendaftaran kedaluwarsa:', err);
     }
 
     const data = await prisma.anak.findMany({
@@ -58,12 +67,13 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: 'Calon siswa tidak ditemukan.' }, { status: 404 });
     }
 
-    const deadline = new Date();
-    deadline.setDate(deadline.getDate() + DEADLINE_HARI);
+    const deadline = hitungDeadline();
 
     let updated;
     if (aksi === 'terima') {
-      // Set deadline pembayaran 2 minggu, status tetap PENDAFTAR sampai bayar
+      // Set deadline pembayaran 2 minggu, status tetap PENDAFTAR sampai bayar.
+      // alasanPenolakan dikosongkan agar calon siswa yang sebelumnya ditolak
+      // (termasuk ditolak otomatis karena lewat batas bayar) dapat diproses lagi.
       updated = await prisma.anak.update({
         where: { idAnak },
         data: {
@@ -78,6 +88,18 @@ export async function PATCH(request: Request) {
         update: {},
         create: { idAnak, saldo: 0 },
       });
+
+      // Terbitkan ulang tagihan pendaftaran yang sempat dibatalkan, supaya
+      // orang tua yang terlambat bayar tetap bisa melunasi.
+      await prisma.tagihan.updateMany({
+        where: { idAnak, jenis: 'PENDAFTARAN', status: 'DIBATALKAN' },
+        data: { status: 'BELUM_BAYAR' },
+      });
+
+      // Calon siswa yang belum pernah punya tagihan pendaftaran (mis. didaftarkan
+      // langsung oleh petugas tanpa melewati verifikasi berkas) juga harus punya
+      // tagihan, kalau tidak orang tua tidak bisa membayar dan malah ditolak otomatis.
+      await buatTagihanPendaftaran(prisma, idAnak);
 
       // Notifikasi ke orang tua: anak diterima, silakan bayar dalam 2 minggu
       const deadlineStr = deadline.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -125,43 +147,17 @@ export async function PATCH(request: Request) {
   }
 }
 
-// POST /api/pendaftaran -> cek deadline pembayaran (dipakai cron/scheduler)
+// POST /api/pendaftaran -> jalankan pembatalan otomatis (dipanggil penjadwal)
 export async function POST() {
   try {
-    // Endpoint ini bisa dipanggil oleh cron job untuk cek deadline
-    const now = new Date();
-    const anakExpired = await prisma.anak.findMany({
-      where: {
-        status: 'PENDAFTAR',
-        deadlineBayar: { lt: now },
-      },
-      include: { keluarga: true },
+    const hasil = await batalkanPendaftaranKedaluwarsa(prisma);
+    return NextResponse.json({
+      success: true,
+      data: { dibatalkan: hasil.dibatalkan.length, rincian: hasil.dibatalkan, dilewati: hasil.dilewati },
+      message: hasil.dibatalkan.length
+        ? `${hasil.dibatalkan.length} pendaftaran dibatalkan karena melewati batas pembayaran.`
+        : 'Tidak ada pendaftaran yang melewati batas pembayaran.',
     });
-
-    for (const anak of anakExpired) {
-      // Batalkan tagihan pendaftaran
-      await prisma.tagihan.updateMany({
-        where: { idAnak: anak.idAnak, jenis: 'PENDAFTARAN' },
-        data: { status: 'DIBATALKAN' },
-      });
-      // Hapus deadline
-      await prisma.anak.update({
-        where: { idAnak: anak.idAnak },
-        data: { deadlineBayar: null },
-      });
-      // Notifikasi
-      await prisma.notifikasi.create({
-        data: {
-          idKeluarga: anak.idKeluarga,
-          tipe: 'DEADLINE_PEMBAYARAN',
-          judul: 'Batas Waktu Pembayaran Habis',
-          pesan: `Batas waktu pembayaran biaya pendaftaran untuk ${anak.nama} telah habis. Pendaftaran dibatalkan. Silakan hubungi sekolah untuk pendaftaran ulang.`,
-          dataReferensi: JSON.stringify({ idAnak: anak.idAnak }),
-        },
-      });
-    }
-
-    return NextResponse.json({ success: true, data: { dibatalkan: anakExpired.length } });
   } catch (error) {
     console.error('API Pendaftaran POST Error:', error);
     return NextResponse.json({ success: false, error: 'Kesalahan server.' }, { status: 500 });

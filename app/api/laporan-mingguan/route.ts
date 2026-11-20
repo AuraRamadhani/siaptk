@@ -42,8 +42,8 @@ export function parseCatatan(raw: string) {
 export async function GET() {
   try {
     const sesi = await sesiSekarang();
-    if (!sesi || !['GURU', 'KEPALA_SEKOLAH', 'BENDAHARA', 'SUPER_ADMIN'].includes(sesi.peran)) {
-      return NextResponse.json({ success: false, error: 'Hanya staf yang dapat melihat laporan.' }, { status: 403 });
+    if (!sesi || !['GURU', 'KEPALA_SEKOLAH', 'SUPER_ADMIN'].includes(sesi.peran)) {
+      return NextResponse.json({ success: false, error: 'Hanya guru dan kepala sekolah yang dapat melihat laporan.' }, { status: 403 });
     }
 
     const tahunAktif = await prisma.tahunAjaran.findFirst({ where: { statusAktif: true } });

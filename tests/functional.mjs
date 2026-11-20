@@ -146,24 +146,29 @@ await uji('TC-08 setoran tunai oleh bendahara langsung sah dan menambah saldo', 
 
 await uji('TC-09 daftar pendaftar + penetapan penerimaan', async () => {
   await masuk('KEPALA_SEKOLAH', 'kepsek@siaptk.sch.id');
-  let adaPendaftar = (await get('/api/pendaftaran')).body.data?.length > 0;
+  const daftar = await get('/api/pendaftaran');
 
   // Tidak perlu buat siswa baru; sudah ada dari seed. Skip TC-09.
-  if (!adaPendaftar) {
+  if (!(daftar.body.data?.length > 0)) {
     console.log('SKIP   TC-09 tidak ada pendaftar di seed');
     await masuk('BENDAHARA', 'bendahara@siaptk.sch.id');
     return;
   }
 
-  const { status, body } = await get('/api/pendaftaran');
-  assert.equal(status, 200);
-  const idPendaftar = body.data[0]?.idAnak;
+  assert.equal(daftar.status, 200);
+  const idPendaftar = daftar.body.data[0]?.idAnak;
   assert.ok(idPendaftar, 'tidak ada pendaftar');
+
+  // Penetapan penerimaan hanya menetapkan deadline bayar; status tetap PENDAFTAR
+  // sampai biaya pendaftaran diverifikasi LUNAS oleh bendahara (lihat app/api/pendaftaran).
   const terima = await kirim('/api/pendaftaran', 'PATCH', { idAnak: idPendaftar, aksi: 'terima' });
-  assert.equal(terima.status, 200);
-  assert.equal((await get('/api/pendaftaran')).body.data.length, body.data.length - 1, 'pendaftar tidak berkurang');
-  const batal = await kirim('/api/pendaftaran', 'PATCH', { idAnak: idPendaftar, aksi: 'batal' });
-  assert.equal(batal.status, 200, 'gagal mengembalikan status ke PENDAFTAR');
+  assert.equal(terima.status, 200, 'penetapan penerimaan gagal');
+  assert.ok(terima.body.data?.deadlineBayar, 'deadline pembayaran tidak ditetapkan');
+  assert.equal(terima.body.data?.status, 'PENDAFTAR', 'status berubah sebelum pembayaran lunas');
+
+  const sesudah = await get('/api/pendaftaran');
+  const baris = sesudah.body.data.find((a) => a.idAnak === idPendaftar);
+  assert.ok(baris?.deadlineBayar, 'deadline tidak tersimpan di daftar pendaftar');
 
   // Kembali ke bendahara untuk skenario berikutnya.
   await masuk('BENDAHARA', 'bendahara@siaptk.sch.id');
@@ -177,7 +182,7 @@ await uji('TC-10 portal orang tua menerima riwayat tabungan', async () => {
   const t = berRiwayat.rekeningTabungan.transaksi[0];
   for (const k of ['idTransaksi', 'jenis', 'nominal']) assert.ok(t[k] !== undefined, `field ${k} hilang`);
 });
-
+ 
 await uji('TC-11 rekonsiliasi: total saldo dashboard = jumlah saldo rekening', async () => {
   const { body: tab } = await get('/api/tabungan');
   const { body: dash } = await get('/api/dashboard');

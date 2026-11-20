@@ -39,6 +39,21 @@ export async function GET(request: Request) {
       conditions.push({ status });
     }
 
+    // ?perluVerifikasi=1 -> hanya berkas yang benar-benar menunggu diperiksa:
+    // sudah diunggah isinya (akta/foto/kia) dan statusnya belum disetujui.
+    // Tanpa ini, menu Verifikasi Berkas menampilkan pendaftar yang belum
+    // mengunggah apa pun sehingga tidak ada yang bisa diverifikasi.
+    if (new URL(request.url).searchParams.get('perluVerifikasi') === '1') {
+      conditions.push({
+        berkasAnak: {
+          some: {
+            statusVerifikasi: { not: 'DIVERIFIKASI' },
+            OR: [{ akta: { not: null } }, { foto: { not: null } }, { kia: { not: null } }],
+          },
+        },
+      });
+    }
+
     if (tahunAjaran) {
       conditions.push({
         riwayatKelompok: { some: { idTahunAjaran: tahunAjaran } },

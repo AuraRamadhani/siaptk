@@ -76,6 +76,9 @@ export default function PanelArsip({
     if (tahun) q.set('tahunAjaran', tahun);
     const targetStatus = mode === 'verifikasi_pendaftaran' ? 'PENDAFTAR' : mode === 'arsip_aktif' ? 'AKTIF' : status;
     if (targetStatus) q.set('status', targetStatus);
+    // Mode verifikasi hanya menampilkan berkas yang benar-benar menunggu diperiksa,
+    // sehingga tidak tercampur dengan pendaftar yang belum mengunggah berkas.
+    if (mode === 'verifikasi_pendaftaran') q.set('perluVerifikasi', '1');
 
     const res = await fetch('/api/arsip?' + q.toString(), { cache: 'no-store' }).then((x) => x.json());
     if (res.success) {
@@ -234,7 +237,7 @@ export default function PanelArsip({
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             {mode === 'verifikasi_pendaftaran'
-              ? `${data.length} berkas calon siswa ditampilkan untuk diverifikasi.`
+              ? `${data.length} berkas calon siswa sudah diunggah dan menunggu diperiksa.`
               : mode === 'arsip_aktif'
               ? `${data.length} siswa aktif terdaftar dalam arsip.`
               : `${data.length} arsip ditemukan.`}
@@ -243,7 +246,19 @@ export default function PanelArsip({
         {loading ? (
           <div className="p-6 text-xs text-slate-500">Mencari…</div>
         ) : data.length === 0 ? (
-          <div className="p-6 text-xs text-slate-500">Tidak ada arsip yang cocok.</div>
+          <div className="p-6 text-xs text-slate-500 space-y-1">
+            {mode === 'verifikasi_pendaftaran' ? (
+              <>
+                <p className="font-semibold text-slate-700">Tidak ada berkas yang menunggu verifikasi.</p>
+                <p>
+                  Menu ini hanya menampilkan calon siswa yang sudah mengunggah Akta, Pas Foto, atau KIA.
+                  Pendaftar yang belum mengunggah berkas tidak muncul di sini.
+                </p>
+              </>
+            ) : (
+              <p>Tidak ada arsip yang cocok.</p>
+            )}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">

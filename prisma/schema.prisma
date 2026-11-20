@@ -132,6 +132,9 @@ model TahunAjaran {
   idTahunAjaran   String            @id @default(uuid()) @map("id_tahun_ajaran")
   periode         String
   statusAktif     Boolean           @default(false) @map("status_aktif")
+  /// Tanggal acuan hitung usia (biasanya 1 Juli tahun awal periode).
+  /// Kosong = pakai acuan bawaan sistem.
+  tanggalAcuan    DateTime?         @map("tanggal_acuan") @db.Date
   riwayatKelompok RiwayatKelompok[]
 
   @@map("tahun_ajaran")
@@ -298,6 +301,8 @@ enum StatusAnak {
   PENDAFTAR
   AKTIF
   LULUS
+  BERHENTI
+  PINDAH
 }
 
 enum JenisTagihan {

@@ -54,14 +54,27 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: "Peran tidak berwenang." }, { status: 403 });
     }
 
-    const { idAnak, nama, tglLahir, jenisKelamin, status } = await request.json();
+    const { idAnak, nama, tglLahir, jenisKelamin, status, alasanKeluar } = await request.json();
     if (!idAnak) return NextResponse.json({ success: false, error: "idAnak wajib diisi." }, { status: 400 });
 
     const anak = await prisma.anak.findUnique({ where: { idAnak } });
     if (!anak) return NextResponse.json({ success: false, error: "Siswa tidak ditemukan." }, { status: 404 });
 
-    if (status && !["AKTIF", "PENDAFTAR"].includes(status)) {
-      return NextResponse.json({ success: false, error: "Status harus AKTIF atau PENDAFTAR." }, { status: 400 });
+    // Status yang diizinkan: PENDAFTAR, AKTIF, LULUS, BERHENTI, PINDAH.
+    const STATUS_SAH = ["PENDAFTAR", "AKTIF", "LULUS", "BERHENTI", "PINDAH"];
+    if (status && !STATUS_SAH.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Status harus salah satu dari: ${STATUS_SAH.join(', ')}.` },
+        { status: 400 }
+      );
+    }
+
+    // Berhenti atau pindah wajib disertai alasan agar jejaknya jelas di arsip.
+    if ((status === "BERHENTI" || status === "PINDAH") && !String(alasanKeluar || "").trim()) {
+      return NextResponse.json(
+        { success: false, error: `Alasan ${status === "PINDAH" ? "pindah" : "berhenti"} wajib diisi.` },
+        { status: 400 }
+      );
     }
 
     const updated = await prisma.anak.update({
@@ -71,10 +84,21 @@ export async function PATCH(request: Request) {
         tglLahir: tglLahir ? new Date(tglLahir) : undefined,
         jenisKelamin: jenisKelamin === "P" || jenisKelamin === "L" ? jenisKelamin : undefined,
         status: status || undefined,
+        alasanPenolakan:
+          status === "BERHENTI" || status === "PINDAH"
+            ? String(alasanKeluar).trim()
+            : status === "AKTIF" || status === "PENDAFTAR"
+              ? null
+              : undefined,
       },
     });
 
-    return NextResponse.json({ success: true, data: updated, message: "Data siswa diperbarui." });
+    const label = { LULUS: "lulus", BERHENTI: "berhenti", PINDAH: "pindah", AKTIF: "diaktifkan kembali", PENDAFTAR: "dikembalikan ke pendaftar" } as Record<string, string>;
+    return NextResponse.json({
+      success: true,
+      data: updated,
+      message: status ? `${updated.nama} ${label[status] || "diperbarui"}.` : "Data siswa diperbarui.",
+    });
   } catch (error) {
     console.error("API Anak PATCH Error:", error);
     return NextResponse.json({ success: false, error: "Kesalahan server." }, { status: 500 });

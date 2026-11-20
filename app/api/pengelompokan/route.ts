@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
-import { hitungUsia, TANGGAL_ACUAN_PPDB, tentukanKelompokDariTglLahir, USIA_MIN, USIA_MAX } from '@/lib/usia';
+import { TANGGAL_ACUAN_PPDB, tentukanKelompokDariTglLahir, USIA_MIN, USIA_MAX } from '@/lib/usia';
+import { acuanTahunAjaran, rencanaKenaikan } from '@/lib/kenaikan';
 
 // GET /api/pengelompokan -> daftar kelompok + isi siswa tahun ajaran aktif
 export async function GET() {
@@ -83,7 +84,7 @@ export async function DELETE(request: Request) {
 }
 
 // POST /api/pengelompokan -> jalankan pengelompokan otomatis (KEPALA_SEKOLAH only)
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const sesi = await sesiSekarang();
     if (!sesi || sesi.peran !== 'KEPALA_SEKOLAH') {
@@ -93,62 +94,89 @@ export async function POST() {
       );
     }
 
+    // ?terapkan=1 menyimpan hasil; tanpa itu hanya pratinjau.
+    const terapkan = new URL(request.url).searchParams.get('terapkan') === '1';
+
     const tahunAktif = await prisma.tahunAjaran.findFirst({ where: { statusAktif: true } });
     if (!tahunAktif) {
       return NextResponse.json({ success: false, error: 'Belum ada tahun ajaran aktif.' }, { status: 404 });
     }
 
-    const kelompok = await prisma.kelompok.findMany({ orderBy: { usiaMin: 'desc' } });
+    const kelompok = await prisma.kelompok.findMany({ orderBy: { usiaMin: 'asc' } });
     if (kelompok.length === 0) {
       return NextResponse.json({ success: false, error: 'Belum ada data kelompok.' }, { status: 404 });
     }
 
-    const siswa = await prisma.anak.findMany({
-      where: {
-        status: 'AKTIF',
-        riwayatKelompok: { none: { idTahunAjaran: tahunAktif.idTahunAjaran } },
-      },
+    // Usia dihitung memakai acuan tahun ajaran aktif, bukan konstanta 1 Juli 2026.
+    const acuan = acuanTahunAjaran(tahunAktif, TANGGAL_ACUAN_PPDB);
+
+    const rencana = await rencanaKenaikan(prisma, {
+      idTahunAjaran: tahunAktif.idTahunAjaran,
+      acuan,
+      usiaMin: USIA_MIN,
+      usiaMaks: USIA_MAX,
+      kelompok,
+      tentukan: tentukanKelompokDariTglLahir,
     });
 
-    const berhasil: { nama: string; kelompok: string; usia: number }[] = [];
-    const gagal: { nama: string; alasan: string }[] = [];
+    const naik = rencana.filter((b) => b.hasil === 'NAIK');
+    const lulus = rencana.filter((b) => b.hasil === 'LULUS');
+    const gagal = rencana.filter((b) => b.hasil === 'GAGAL');
+    const tetap = rencana.filter((b) => b.hasil === 'TETAP');
 
-    for (const anak of siswa) {
-      const usia = hitungUsia(new Date(anak.tglLahir), TANGGAL_ACUAN_PPDB);
-      const infoUsia = tentukanKelompokDariTglLahir(anak.tglLahir, TANGGAL_ACUAN_PPDB);
+    const ringkasan = {
+      tahunAjaran: tahunAktif.periode,
+      acuan: acuan.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      naik: naik.length,
+      lulus: lulus.length,
+      gagal: gagal.length,
+      tetap: tetap.length,
+      rincian: rencana,
+    };
 
-      if (usia < USIA_MIN) {
-        gagal.push({ nama: anak.nama, alasan: `Usia ${usia} tahun, minimal ${USIA_MIN} tahun.` });
-        continue;
-      }
-      if (usia > USIA_MAX) {
-        gagal.push({ nama: anak.nama, alasan: `Usia ${usia} tahun, maksimal ${USIA_MAX} tahun.` });
-        continue;
-      }
+    // Pratinjau: tidak ada yang diubah.
+    if (!terapkan) {
+      return NextResponse.json({
+        success: true,
+        data: ringkasan,
+        message:
+          `${naik.length} siswa naik kelompok, ${lulus.length} lulus, ` +
+          `${tetap.length} tetap, ${gagal.length} tidak dapat diproses.`,
+      });
+    }
 
-      const cocok =
-        (infoUsia &&
-          kelompok.find((k) => k.usiaMin === infoUsia.usiaMin && k.usiaMaks === infoUsia.usiaMaks)) ||
-        kelompok.find((k) => usia >= k.usiaMin && usia <= k.usiaMaks);
-      if (!cocok) {
-        gagal.push({ nama: anak.nama, alasan: `Tidak ada kelompok untuk usia ${usia} tahun.` });
-        continue;
-      }
-
+    // Terapkan: simpan kelompok baru, dan tandai lulus bagi yang melewati batas usia.
+    let disimpan = 0;
+    for (const baris of rencana) {
+      if (baris.hasil === 'NAIK' || (baris.hasil === 'TETAP' && !baris.kelompokBaru)) continue;
+      if (!baris.kelompokBaru) continue;
+      const tujuan = kelompok.find((k) => k.nama === baris.kelompokBaru);
+      if (!tujuan) continue;
+      // Baris TETAP yang sudah punya kelompok tahun ini tidak perlu ditulis ulang.
+      if (baris.alasan === 'Sudah dikelompokkan pada tahun ajaran ini') continue;
       await prisma.riwayatKelompok.create({
         data: {
-          idAnak: anak.idAnak,
-          idKelompok: cocok.idKelompok,
+          idAnak: baris.idAnak,
+          idKelompok: tujuan.idKelompok,
           idTahunAjaran: tahunAktif.idTahunAjaran,
         },
       });
-      berhasil.push({ nama: anak.nama, kelompok: cocok.nama, usia });
+      disimpan += 1;
+    }
+
+    for (const baris of lulus) {
+      await prisma.anak.update({
+        where: { idAnak: baris.idAnak },
+        data: { status: 'LULUS' },
+      });
     }
 
     return NextResponse.json({
       success: true,
-      data: { berhasil, gagal },
-      message: `${berhasil.length} siswa dikelompokkan, ${gagal.length} gagal.`,
+      data: { ...ringkasan, disimpan },
+      message:
+        `${disimpan} siswa dikelompokkan, ${lulus.length} ditandai lulus, ` +
+        `${gagal.length} tidak dapat diproses.`,
     });
   } catch (error) {
     console.error('API Pengelompokan POST Error:', error);

@@ -16,6 +16,7 @@ type Anak = {
   status: string;
   jenisKelamin: string;
   jalurPendaftaran: string;
+  alasanPenolakan?: string | null;
   keluarga: {
     namaAyah: string | null;
     namaIbu: string | null;
@@ -30,6 +31,18 @@ type Anak = {
 
 const tgl = (s: string) => new Date(s).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 const keUrlBerkas = (file: string) => (file.startsWith('/') || file.startsWith('http') ? file : `/uploads/${file}`);
+
+/** Label bahasa Indonesia untuk status siswa. */
+const LABEL_STATUS_ANAK: Record<string, string> = {
+  PENDAFTAR: 'Pendaftar',
+  AKTIF: 'Aktif',
+  LULUS: 'Lulus',
+  BERHENTI: 'Berhenti',
+  PINDAH: 'Pindah',
+};
+
+/** Status yang wajib disertai alasan. */
+const PERLU_ALASAN = ['BERHENTI', 'PINDAH'];
 
 export default function PanelArsip({
   mode = 'semua',
@@ -47,6 +60,12 @@ export default function PanelArsip({
   const [loading, setLoading] = useState(false);
   const [previewBerkas, setPreviewBerkas] = useState<{ label: string; url: string } | null>(null);
   const halData = usePaginasi(data);
+
+  // Modal ubah status siswa (berhenti / pindah / lulus / aktif kembali)
+  const [modalStatus, setModalStatus] = useState<{ idAnak: string; nama: string; status: string } | null>(null);
+  const [statusBaru, setStatusBaru] = useState('AKTIF');
+  const [alasanStatus, setAlasanStatus] = useState('');
+  const [galatStatus, setGalatStatus] = useState('');
 
   const muat = async () => {
     setLoading(true);
@@ -99,6 +118,34 @@ export default function PanelArsip({
     }).then((x) => x.json());
     setPesan(res.success ? res.message : res.error);
     muat();
+  };
+
+  /** Simpan perubahan status siswa (aktif / lulus / berhenti / pindah). */
+  const simpanStatus = async () => {
+    if (!modalStatus) return;
+    if (PERLU_ALASAN.includes(statusBaru) && !alasanStatus.trim()) {
+      setGalatStatus(`Alasan ${statusBaru === 'PINDAH' ? 'pindah' : 'berhenti'} wajib diisi.`);
+      return;
+    }
+    const res = await fetch('/api/anak', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idAnak: modalStatus.idAnak,
+        status: statusBaru,
+        alasanKeluar: PERLU_ALASAN.includes(statusBaru) ? alasanStatus.trim() : undefined,
+      }),
+    }).then((x) => x.json());
+
+    if (res.success) {
+      setPesan(res.message);
+      setModalStatus(null);
+      setAlasanStatus('');
+      setGalatStatus('');
+      await muat();
+    } else {
+      setGalatStatus(res.error || 'Gagal menyimpan status.');
+    }
   };
 
   return (
@@ -157,6 +204,9 @@ export default function PanelArsip({
                 <option value="">Semua</option>
                 <option value="AKTIF">Aktif</option>
                 <option value="PENDAFTAR">Pendaftar</option>
+                <option value="LULUS">Lulus</option>
+                <option value="BERHENTI">Berhenti</option>
+                <option value="PINDAH">Pindah</option>
               </select>
             </label>
           )}
@@ -340,6 +390,35 @@ export default function PanelArsip({
                           <span className="text-[10px] text-slate-400">Belum ada berkas</span>
                         )}
                       </td>
+                      <td className="px-6 py-3 text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              a.status === 'AKTIF'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : a.status === 'LULUS'
+                                  ? 'bg-sky-50 text-sky-700'
+                                  : a.status === 'BERHENTI' || a.status === 'PINDAH'
+                                    ? 'bg-rose-50 text-rose-700'
+                                    : 'bg-amber-50 text-amber-700'
+                            }`}
+                          >
+                            {LABEL_STATUS_ANAK[a.status] || a.status}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalStatus({ idAnak: a.idAnak, nama: a.nama, status: a.status });
+                              setStatusBaru(a.status === 'AKTIF' ? 'BERHENTI' : 'AKTIF');
+                              setAlasanStatus(a.alasanPenolakan || '');
+                              setGalatStatus('');
+                            }}
+                            className="text-[10px] font-semibold text-[#095c51] hover:underline cursor-pointer"
+                          >
+                            Ubah Status
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -447,6 +526,91 @@ export default function PanelArsip({
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold cursor-pointer"
               >
                 Konfirmasi Tolak Berkas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL UBAH STATUS SISWA */}
+      {modalStatus && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Ubah Status Siswa</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {modalStatus.nama} · sekarang{' '}
+                  <span className="font-semibold text-slate-800">
+                    {LABEL_STATUS_ANAK[modalStatus.status] || modalStatus.status}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => { setModalStatus(null); setGalatStatus(''); }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                aria-label="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Status Baru</label>
+              <select
+                value={statusBaru}
+                onChange={(e) => { setStatusBaru(e.target.value); setGalatStatus(''); }}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white cursor-pointer outline-none focus:border-[#095c51]"
+              >
+                <option value="AKTIF">Aktif (kembali bersekolah)</option>
+                <option value="BERHENTI">Berhenti sekolah</option>
+                <option value="PINDAH">Pindah sekolah</option>
+                <option value="LULUS">Lulus</option>
+                <option value="PENDAFTAR">Kembalikan ke Pendaftar</option>
+              </select>
+            </div>
+
+            {PERLU_ALASAN.includes(statusBaru) && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Alasan {statusBaru === 'PINDAH' ? 'Pindah' : 'Berhenti'} <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  value={alasanStatus}
+                  onChange={(e) => { setAlasanStatus(e.target.value); setGalatStatus(''); }}
+                  rows={3}
+                  placeholder={statusBaru === 'PINDAH' ? 'Contoh: pindah domisili ke Bandung' : 'Contoh: alasan keluarga'}
+                  className={`w-full px-3 py-2 border rounded-xl text-xs outline-none transition ${
+                    galatStatus ? 'border-rose-400 bg-rose-50/40' : 'border-slate-200 focus:border-[#095c51]'
+                  }`}
+                />
+              </div>
+            )}
+
+            {galatStatus && (
+              <p role="alert" className="text-[11px] font-semibold text-rose-600 flex items-start gap-1">
+                <span aria-hidden="true">⚠</span>
+                <span>{galatStatus}</span>
+              </p>
+            )}
+
+            <p className="text-[11px] text-slate-500">
+              Siswa berhenti atau pindah tidak lagi muncul di daftar siswa aktif, tetapi datanya tetap tersimpan di
+              arsip dan bisa dikembalikan menjadi Aktif kapan saja.
+            </p>
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                onClick={() => { setModalStatus(null); setGalatStatus(''); }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                onClick={simpanStatus}
+                className="px-4 py-2 bg-[#095c51] hover:bg-[#074840] text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Simpan Status
               </button>
             </div>
           </div>

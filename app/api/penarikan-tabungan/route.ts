@@ -289,10 +289,14 @@ export async function PATCH(request: Request) {
         : 'Penarikan diverifikasi, saldo dipotong, dan slip dicatat.',
     });
   } catch (error) {
-    console.error('API PenarikanTabungan PATCH Error:', error);
+    const status = (error as { http?: number }).http || 500;
+    // Penolakan wajar (mis. transaksi sudah diproses) bukan kegagalan server:
+    // dicatat sebagai peringatan agar log tidak penuh kesan error.
+    if (status >= 500) console.error('API PenarikanTabungan PATCH Error:', error);
+    else console.warn('API PenarikanTabungan PATCH ditolak:', (error as Error).message || error);
     return NextResponse.json(
       { success: false, error: (error as Error).message || 'Kesalahan server.' },
-      { status: (error as { http?: number }).http || 500 }
+      { status }
     );
   }
 }

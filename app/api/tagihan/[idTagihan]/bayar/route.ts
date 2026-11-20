@@ -120,6 +120,19 @@ export async function POST(
       return NextResponse.json({ success: false, error: "Tagihan sudah lunas atau dibatalkan" }, { status: 400 });
     }
 
+    // Alur pendaftaran: biaya pendaftaran baru boleh dibayar setelah kepala sekolah
+    // menetapkan penerimaan (yang menandai deadlineBayar). Tanpa ini, orang tua bisa
+    // membayar lebih dulu lalu tagihannya menggantung tanpa keputusan penerimaan.
+    if (tagihan.jenis === "PENDAFTARAN" && !PETUGAS.has(sesi.peran) && !tagihan.anak?.deadlineBayar) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Pendaftaran belum ditetapkan diterima oleh kepala sekolah. Silakan tunggu keputusan sebelum membayar.",
+        },
+        { status: 409 }
+      );
+    }
+
     let newStatus: string;
     const pembayaranData: Prisma.PembayaranUncheckedCreateInput = {
       idTagihan,

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sesiSekarang } from '@/lib/sesi';
-import { buatTagihanPendaftaran } from '@/lib/tagihan';
+
 
 const STAF = ['KEPALA_SEKOLAH', 'BENDAHARA', 'GURU', 'SUPER_ADMIN'];
 
@@ -134,17 +134,18 @@ export async function PATCH(request: Request) {
         include: { anak: true },
       });
 
-      // Jika berkas disetujui oleh Kepala Sekolah, terbitkan tagihan biaya pendaftaran & notifikasi
+      // Berkas yang disetujui hanya berarti "dokumen sah". Tagihan pendaftaran TIDAK
+      // diterbitkan di sini — penerbitannya menunggu keputusan penerimaan kepala sekolah
+      // (POST PATCH /api/pendaftaran). Orang tua diberi tahu agar menunggu keputusan.
       if (status === 'DIVERIFIKASI' && updatedBerkas.anak) {
-        await buatTagihanPendaftaran(prisma, updatedBerkas.anak.idAnak);
         try {
           await prisma.notifikasi.create({
             data: {
               idKeluarga: updatedBerkas.anak.idKeluarga,
               tipe: 'TAGIHAN_BARU',
               judul: 'Berkas Pendaftaran Disetujui Kepala Sekolah',
-              pesan: `Alhamdulillah! Berkas pendaftaran untuk ${updatedBerkas.anak.nama} telah disetujui oleh Kepala Sekolah. Tagihan biaya pendaftaran telah diterbitkan, silakan melakukan pembayaran.`,
-              dataReferensi: JSON.stringify({ jenis: 'PENDAFTARAN', idAnak: updatedBerkas.anak.idAnak }),
+              pesan: `Berkas pendaftaran untuk ${updatedBerkas.anak.nama} telah diperiksa dan dinyatakan lengkap. Menunggu keputusan penerimaan dari kepala sekolah sebelum biaya pendaftaran dapat dibayar.`,
+              dataReferensi: JSON.stringify({ jenis: 'BERKAS_DISETUJUI', idAnak: updatedBerkas.anak.idAnak }),
             },
           });
         } catch (e) {

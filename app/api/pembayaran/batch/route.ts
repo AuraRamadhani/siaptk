@@ -38,6 +38,18 @@ export async function POST(request: Request) {
       if (!milikSendiri) {
         return NextResponse.json({ success: false, error: "Tagihan bukan milik keluarga Anda." }, { status: 403 });
       }
+
+      // Biaya pendaftaran baru boleh dibayar setelah kepala sekolah menetapkan penerimaan.
+      const belumDiterima = tagihanList.some((t) => t.jenis === 'PENDAFTARAN' && !t.anak?.deadlineBayar);
+      if (belumDiterima) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Pendaftaran belum ditetapkan diterima oleh kepala sekolah. Silakan tunggu keputusan sebelum membayar.',
+          },
+          { status: 409 }
+        );
+      }
     }
 
     const results: unknown[] = [];

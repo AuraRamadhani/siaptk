@@ -95,13 +95,9 @@ export async function GET(request: Request) {
         const tarifAktif = await ambilTarifSpp(prisma);
 
         for (const a of keluarga.anak) {
-            const berkasObj = Array.isArray(a.berkasAnak) ? a.berkasAnak[0] : a.berkasAnak;
-            const berkasDiverifikasi = berkasObj?.statusVerifikasi === 'DIVERIFIKASI';
-
-            if (a.status === 'PENDAFTAR' && berkasDiverifikasi && !a.tagihan.some((t) => t.jenis === 'PENDAFTARAN')) {
-                await buatTagihanPendaftaran(prisma, a.idAnak);
-                perluMuatUlang = true;
-            }
+            // Tagihan pendaftaran TIDAK lagi diterbitkan karena berkas disetujui.
+            // Penerbitannya hanya lewat keputusan penerimaan kepala sekolah
+            // (PATCH /api/pendaftaran).
 
             // Tagihan SPP bulanan HANYA boleh terbit jika pembayaran pendaftaran sudah diverifikasi LUNAS oleh Bendahara
             const tagihanPendaftaran = a.tagihan.find((t) => t.jenis === 'PENDAFTARAN');

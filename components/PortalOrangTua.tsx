@@ -1564,6 +1564,21 @@ export default function PortalOrangTua({
                                                                     </button>
                                                                 )}
                                                             </div>
+                                                        ) : !ch.deadlineBayar ? (
+                                                            // Belum ditetapkan diterima: belum ada tagihan yang boleh dibayar.
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold text-[10px] w-fit">
+                                                                    <Clock className="w-3 h-3 text-slate-500" />
+                                                                    <span>Menunggu Keputusan Penerimaan</span>
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-500">
+                                                                    {statusBerkas !== "DIVERIFIKASI"
+                                                                        ? berkasTerkirim
+                                                                            ? "Berkas sudah diunggah, menunggu diperiksa kepala sekolah"
+                                                                            : "Unggah Akta, Foto, dan KIA agar berkas dapat diperiksa"
+                                                                        : "Berkas sudah disetujui. Menunggu kepala sekolah menetapkan penerimaan"}
+                                                                </span>
+                                                            </div>
                                                         ) : (
                                                             <div className="flex flex-col gap-1.5">
                                                                 <div className="font-extrabold text-slate-900 text-xs">
@@ -1581,16 +1596,9 @@ export default function PortalOrangTua({
                                                                     <CreditCard className="w-3.5 h-3.5" />
                                                                     <span>Bayar Pendaftaran</span>
                                                                 </button>
-                                                                {ch.deadlineBayar && (
-                                                                    <span className="text-[10px] text-amber-700">Deadline: {ch.deadlineBayar}</span>
-                                                                )}
-                                                                {statusBerkas !== "DIVERIFIKASI" && (
-                                                                    <span className="text-[10px] text-slate-500">
-                                                                        {berkasTerkirim
-                                                                            ? "Menunggu persetujuan berkas oleh kepala sekolah"
-                                                                            : "Unggah Akta, Foto, dan KIA agar berkas dapat diperiksa"}
-                                                                    </span>
-                                                                )}
+                                                                <span className="text-[10px] text-amber-700">
+                                                                    Batas bayar: {ch.deadlineBayar}
+                                                                </span>
                                                             </div>
                                                         )}
                                                     </td>
@@ -1800,6 +1808,10 @@ export default function PortalOrangTua({
                                                             ) : detailTagihanPendaftaran?.status === "MENUNGGU_VERIFIKASI" ? (
                                                                 <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
                                                                     Menunggu Verifikasi Bendahara
+                                                                </span>
+                                                            ) : !detailChild.deadlineBayar ? (
+                                                                <span className="text-slate-500 font-medium text-[11px]">
+                                                                    Menunggu keputusan penerimaan kepala sekolah
                                                                 </span>
                                                             ) : (
                                                                 <button
@@ -3401,6 +3413,11 @@ export default function PortalOrangTua({
 
                     {/* MODAL BAYAR BIAYA PENDAFTARAN (KHUSUS DI MENU ANAK & PENDAFTARAN) */}
                     {showPendaftaranModal && targetPendaftaranAnak && (() => {
+                        // Pengaman tambahan: jangan pernah membuka pembayaran pendaftaran
+                        // bila anak belum ditetapkan diterima oleh kepala sekolah.
+                        if (!targetPendaftaranAnak.deadlineBayar) {
+                            return null;
+                        }
                         const tagihanPendaftaran = (targetPendaftaranAnak.tagihan || []).find((t: any) => t.jenis === "PENDAFTARAN");
                         const nominalAsli = tagihanPendaftaran ? Number(tagihanPendaftaran.nominal) : 1570000;
                         const diskon = tagihanPendaftaran ? Number(tagihanPendaftaran.diskon || 0) : 0;

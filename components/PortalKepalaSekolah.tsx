@@ -39,7 +39,14 @@ type Pendaftar = {
   status: string;
   deadlineBayar?: string | null;
   alasanPenolakan?: string | null;
+  berkasAnak?: { statusVerifikasi: string }[] | { statusVerifikasi: string } | null;
   keluarga?: { namaAyah: string | null; namaIbu: string | null; noHp: string };
+};
+
+/** Status verifikasi berkas calon siswa. */
+const statusBerkasPendaftar = (p: Pendaftar): string => {
+  const b = Array.isArray(p.berkasAnak) ? p.berkasAnak[0] : p.berkasAnak;
+  return b?.statusVerifikasi || 'BELUM_ADA';
 };
 
 const rp = (n: number) => `Rp${Number(n || 0).toLocaleString('id-ID')}`;
@@ -374,30 +381,58 @@ export default function PortalKepalaSekolah() {
                               )}
                             </td>
                             <td className="px-6 py-3.5 text-right">
-                              <div className="inline-flex items-center gap-2">
-                                {p.alasanPenolakan && (
-                                  <button
-                                    onClick={() => setDetailTolak({ nama: p.nama, alasan: String(p.alasanPenolakan) })}
-                                    title="Lihat alasan penolakan"
-                                    aria-label={`Lihat alasan penolakan ${p.nama}`}
-                                    className="w-8 h-8 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center cursor-pointer transition"
-                                  >
-                                    <Eye className="w-4 h-4" />
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => bukaModalAlasan(p.idAnak, p.nama, 'terima')}
-                                  className="px-3.5 py-1.5 rounded-xl bg-[#095c51] hover:bg-[#074840] text-white text-xs font-bold cursor-pointer transition shadow-xs"
-                                >
-                                  {p.alasanPenolakan ? 'Terima Ulang' : p.deadlineBayar ? 'Perpanjang' : 'Terima'}
-                                </button>
-                                <button
-                                  onClick={() => bukaModalAlasan(p.idAnak, p.nama, 'tolak')}
-                                  className="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold cursor-pointer transition shadow-xs"
-                                >
-                                  {p.alasanPenolakan ? 'Ubah Alasan' : 'Tolak'}
-                                </button>
-                              </div>
+                              {(() => {
+                                const statusBerkas = statusBerkasPendaftar(p);
+                                const berkasSah = statusBerkas === 'DIVERIFIKASI';
+                                // Penerimaan hanya boleh ditetapkan setelah berkas sah.
+                                // Perpanjang (sudah pernah diterima) dikecualikan karena
+                                // keputusan penerimaannya sudah dibuat sebelumnya.
+                                const sudahDiterima = Boolean(p.deadlineBayar);
+                                const bolehTerima = berkasSah || sudahDiterima;
+                                return (
+                                  <div className="flex flex-col items-end gap-1">
+                                    <div className="inline-flex items-center gap-2">
+                                      {p.alasanPenolakan && (
+                                        <button
+                                          onClick={() => setDetailTolak({ nama: p.nama, alasan: String(p.alasanPenolakan) })}
+                                          title="Lihat alasan penolakan"
+                                          aria-label={`Lihat alasan penolakan ${p.nama}`}
+                                          className="w-8 h-8 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center cursor-pointer transition"
+                                        >
+                                          <Eye className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={() => bolehTerima && bukaModalAlasan(p.idAnak, p.nama, 'terima')}
+                                        disabled={!bolehTerima}
+                                        title={
+                                          bolehTerima
+                                            ? undefined
+                                            : 'Berkas persyaratan belum diverifikasi. Setujui berkas terlebih dahulu.'
+                                        }
+                                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-xs ${
+                                          bolehTerima
+                                            ? 'bg-[#095c51] hover:bg-[#074840] text-white cursor-pointer'
+                                            : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                        }`}
+                                      >
+                                        {p.alasanPenolakan ? 'Terima Ulang' : p.deadlineBayar ? 'Perpanjang' : 'Terima'}
+                                      </button>
+                                      <button
+                                        onClick={() => bukaModalAlasan(p.idAnak, p.nama, 'tolak')}
+                                        className="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold cursor-pointer transition shadow-xs"
+                                      >
+                                        {p.alasanPenolakan ? 'Ubah Alasan' : 'Tolak'}
+                                      </button>
+                                    </div>
+                                    {!bolehTerima && (
+                                      <span className="text-[10px] text-amber-700 text-right max-w-[190px]">
+                                        Verifikasi berkas dulu: {statusBerkas === 'DITOLAK' ? 'berkas ditolak' : statusBerkas === 'MENUNGGU' ? 'menunggu diperiksa' : 'belum diunggah'}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </td>
                           </tr>
                         ))}

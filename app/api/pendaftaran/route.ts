@@ -51,7 +51,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: 'Hanya kepala sekolah yang dapat memutuskan penerimaan.' }, { status: 403 });
     }
 
-    const { idAnak, aksi, alasanPenolakan } = await request.json();
+    const { idAnak, aksi, alasanPenolakan, pengecualianBerkas } = await request.json();
     if (!idAnak || !['terima', 'tolak'].includes(aksi)) {
       return NextResponse.json({ success: false, error: 'idAnak dan aksi (terima/tolak) wajib diisi.' }, { status: 400 });
     }
@@ -61,10 +61,31 @@ export async function PATCH(request: Request) {
 
     const anak = await prisma.anak.findUnique({
       where: { idAnak },
-      include: { keluarga: true, tagihan: true },
+      include: { keluarga: true, tagihan: true, berkasAnak: true },
     });
     if (!anak) {
       return NextResponse.json({ success: false, error: 'Calon siswa tidak ditemukan.' }, { status: 404 });
+    }
+
+    // Penerimaan hanya boleh ditetapkan setelah berkas dinyatakan sah oleh kepala
+    // sekolah. Pengecualian hanya berlaku bila sekolah mencatat alasannya.
+    // Penetapan ulang (Perpanjang) tidak diulang syaratnya karena keputusan
+    // penerimaan sudah pernah dibuat — cukup berkas pernah ada atau masih ada.
+    if (aksi === 'terima') {
+      const berkas = Array.isArray(anak.berkasAnak) ? anak.berkasAnak[0] : anak.berkasAnak;
+      const berkasSah = berkas?.statusVerifikasi === 'DIVERIFIKASI';
+      const sudahDiterima = Boolean(anak.deadlineBayar) || Boolean(anak.alasanPenolakan);
+      if (!berkasSah && !sudahDiterima && !String(pengecualianBerkas || '').trim()) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Berkas persyaratan belum diverifikasi. Setujui berkas pada menu Verifikasi Berkas terlebih dahulu, ' +
+              'atau isi alasan pengecualian bila sekolah mengizinkan.',
+          },
+          { status: 409 }
+        );
+      }
     }
 
     const deadline = hitungDeadline();
@@ -108,8 +129,17 @@ export async function PATCH(request: Request) {
           idKeluarga: anak.idKeluarga,
           tipe: 'ANAK_DITERIMA',
           judul: 'Anak Diterima - Silakan Bayar Biaya Pendaftaran',
-          pesan: `Selamat! ${anak.nama} telah diterima di TK Islam Nur Habib. Silakan bayar biaya pendaftaran dalam 2 minggu (sebelum ${deadlineStr}) agar status anak menjadi AKTIF.`,
-          dataReferensi: JSON.stringify({ idAnak: anak.idAnak, deadlineBayar: deadline.toISOString() }),
+          pesan:
+            `Selamat! ${anak.nama} telah diterima di TK Islam Nur Habib. Silakan bayar biaya pendaftaran ` +
+            `dalam 2 minggu (sebelum ${deadlineStr}) agar status anak menjadi AKTIF.` +
+            (pengecualianBerkas?.trim()
+              ? ` Catatan: penerimaan ditetapkan dengan pengecualian berkas — ${String(pengecualianBerkas).trim()}`
+              : ''),
+          dataReferensi: JSON.stringify({
+            idAnak: anak.idAnak,
+            deadlineBayar: deadline.toISOString(),
+            ...(pengecualianBerkas?.trim() ? { pengecualianBerkas: String(pengecualianBerkas).trim() } : {}),
+          }),
         },
       });
     } else {

@@ -28,6 +28,7 @@ import { useToast } from '@/components/Toast';
 import KuitansiDigitalModal, { DataKuitansi } from '@/components/KuitansiDigitalModal';
 import { NAMA_BULAN } from '@/lib/tagihan';
 import Paginasi, { usePaginasi } from '@/components/Paginasi';
+import { useDialog } from '@/components/Dialog';
 
 type Trx = {
   idTransaksi: string;
@@ -217,6 +218,7 @@ interface PortalBendaharaProps {
 
 export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps = {}) {
   const { toast } = useToast();
+  const { konfirmasi, beritahu } = useDialog();
   const [tab, setTab] = useState<TabBendahara>('verifikasi');
   const [antrean, setAntrean] = useState<Trx[]>([]);
   const [tagihanPending, setTagihanPending] = useState<TagihanPending[]>([]);
@@ -353,7 +355,13 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
   /** Putuskan tagihan yang berstatus menunggu verifikasi tetapi tidak punya rekaman pembayaran. */
   const putuskanTagihanTanpaBukti = async (tg: TagihanPending, statusBaru: 'LUNAS' | 'BELUM_BAYAR') => {
     const label = statusBaru === 'LUNAS' ? 'menandai LUNAS' : 'mengembalikan ke BELUM BAYAR';
-    if (!window.confirm(`Yakin ${label} tagihan ${tg.anak?.nama || ''} tanpa bukti transfer?`)) return;
+    const lanjut = await konfirmasi({
+      judul: 'Putuskan Tagihan Tanpa Bukti',
+      pesan: `Yakin ${label} tagihan ${tg.anak?.nama || ''}? Tindakan ini tercatat sebagai keputusan bendahara.`,
+      tipe: 'warning',
+      labelOk: 'Lanjutkan',
+    });
+    if (!lanjut) return;
     try {
       const res = await fetch(`/api/tagihan/${tg.idTagihan}`, {
         method: 'PATCH',
@@ -540,7 +548,13 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
   };
 
   const handleGenerateSppBulan = async () => {
-    if (!confirm(`Terbitkan tagihan SPP untuk bulan ${bulanGenerate} ke seluruh siswa aktif?`)) return;
+    const lanjut = await konfirmasi({
+      judul: 'Terbitkan Tagihan SPP',
+      pesan: `Terbitkan tagihan SPP bulan ${bulanGenerate} ke seluruh siswa aktif? Tagihan yang sudah ada tidak akan digandakan.`,
+      tipe: 'info',
+      labelOk: 'Terbitkan',
+    });
+    if (!lanjut) return;
     setLoadingTarif(true);
     try {
       const res = await fetch('/api/pengaturan/tarif-spp', {
@@ -2067,9 +2081,12 @@ export default function PortalBendahara({ namaBendahara }: PortalBendaharaProps 
                 Batal
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!catatanTolak.trim()) {
-                    alert('Catatan alasan penolakan wajib diisi.');
+                    await beritahu('Catatan alasan penolakan wajib diisi sebelum menolak.', {
+                      judul: 'Alasan Belum Diisi',
+                      tipe: 'warning',
+                    });
                     return;
                   }
                   prosesVerifikasi(

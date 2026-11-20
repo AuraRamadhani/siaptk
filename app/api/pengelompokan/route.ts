@@ -148,7 +148,7 @@ export async function POST(request: Request) {
     // Terapkan: simpan kelompok baru, dan tandai lulus bagi yang melewati batas usia.
     let disimpan = 0;
     for (const baris of rencana) {
-      if (baris.hasil === 'NAIK' || (baris.hasil === 'TETAP' && !baris.kelompokBaru)) continue;
+      // Hanya baris yang punya kelompok tujuan yang bisa disimpan (NAIK dan TETAP).
       if (!baris.kelompokBaru) continue;
       const tujuan = kelompok.find((k) => k.nama === baris.kelompokBaru);
       if (!tujuan) continue;

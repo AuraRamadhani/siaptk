@@ -149,7 +149,7 @@ export async function rencanaKenaikan(
       usia,
       kelompokLama,
       kelompokBaru: cocok.nama,
-      hasil: !kelompokLama || kelompokLama === cocok.nama ? 'TETAP' : 'NAIK',
+      hasil: kelompokLama === cocok.nama ? 'TETAP' : 'NAIK',
     });
   }
 

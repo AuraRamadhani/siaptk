@@ -27,6 +27,7 @@ import {
 import { tentukanKelompokDariTglLahir } from '@/lib/usia';
 import { useToast } from '@/components/Toast';
 import Paginasi, { usePaginasi } from '@/components/Paginasi';
+import { useDialog } from '@/components/Dialog';
 
 type KodeKelas = 'KB' | 'A' | 'B';
 type FilterKelas = 'SEMUA' | KodeKelas;
@@ -245,6 +246,7 @@ function tambahHariISO(isoStr: string, jumlahHari: number): string {
 
 export default function PortalGuru({ namaGuru }: PortalGuruProps) {
   const { toast } = useToast();
+  const { konfirmasi } = useDialog();
   const [tab, setTab] = useState<TabGuru>('laporan');
   const [tema, setTema] = useState<Tema[]>([]);
   const [laporan, setLaporan] = useState<Laporan[]>([]);
@@ -559,7 +561,13 @@ export default function PortalGuru({ namaGuru }: PortalGuruProps) {
   };
 
   const hapusLaporan = async (idLaporan: string) => {
-    if (!confirm('Hapus catatan laporan ini?')) return;
+    const lanjut = await konfirmasi({
+      judul: 'Hapus Catatan Laporan',
+      pesan: 'Catatan laporan perkembangan ini akan dihapus permanen dan tidak lagi terlihat oleh orang tua.',
+      tipe: 'danger',
+      labelOk: 'Hapus',
+    });
+    if (!lanjut) return;
     const res = await fetch(`/api/laporan-mingguan?idLaporan=${idLaporan}`, { method: 'DELETE' }).then((x) => x.json());
     if (res.success) toast.info(res.message || 'Laporan dihapus.');
     else toast.error(res.error || 'Gagal menghapus laporan.');
@@ -671,7 +679,13 @@ export default function PortalGuru({ namaGuru }: PortalGuruProps) {
   };
 
   const hapusTema = async (idTema: string) => {
-    if (!confirm('Hapus tema pembelajaran ini?')) return;
+    const lanjut = await konfirmasi({
+      judul: 'Hapus Tema Pembelajaran',
+      pesan: 'Tema ini akan dihapus. Tema yang sudah dipakai laporan tidak dapat dihapus.',
+      tipe: 'danger',
+      labelOk: 'Hapus',
+    });
+    if (!lanjut) return;
     const res = await fetch(`/api/tema-pembelajaran?idTema=${idTema}`, { method: 'DELETE' }).then((x) => x.json());
     if (res.success) toast.info(res.message || 'Tema dihapus.');
     else toast.error(res.error || 'Gagal menghapus tema.');

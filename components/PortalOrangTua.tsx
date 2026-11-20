@@ -45,6 +45,7 @@ import logoSIAPTK from "../app/assets/siap-tk-logo.png";
 import { tentukanKelompokDariTglLahir, cekKelayakanTanggalLahir } from "@/lib/usia";
 import { useToast } from "@/components/Toast";
 import Paginasi, { usePaginasi } from "@/components/Paginasi";
+import { useDialog } from "@/components/Dialog";
 import KuitansiDigitalModal, { DataKuitansi } from "@/components/KuitansiDigitalModal";
 
 interface ParentViewProps {
@@ -160,6 +161,7 @@ export default function PortalOrangTua({
     onLogout,
 }: ParentViewProps) {
     const { toast } = useToast();
+    const { konfirmasi } = useDialog();
     const [activeTab, setActiveTab] = useState<string>("overview");
     const [detailChildId, setDetailChildId] = useState<string | null>(null);
     const [familyChildren, setFamilyChildren] = useState<any[]>([]);
@@ -790,7 +792,13 @@ export default function PortalOrangTua({
     };
 
     const handleBatalBooking = async (idBooking: string) => {
-        if (!confirm("Batalkan jadwal kedatangan ini?")) return;
+        const lanjut = await konfirmasi({
+            judul: "Batalkan Jadwal Kedatangan",
+            pesan: "Jadwal kedatangan ini akan dibatalkan dan kuota slot dikembalikan. Anda dapat memesan ulang jika masih tersedia.",
+            tipe: "danger",
+            labelOk: "Batalkan Jadwal",
+        });
+        if (!lanjut) return;
         try {
             const res = await fetch("/api/booking-kunjungan", {
                 method: "PATCH",

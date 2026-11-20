@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Eye, Download, X } from 'lucide-react';
 import Paginasi, { usePaginasi } from '@/components/Paginasi';
+import { useDialog } from '@/components/Dialog';
 
 type TahunAjaran = { idTahunAjaran: string; periode: string };
 type Riwayat = { idRiwayat: string; kelompok: { nama: string }; tahunAjaran: { periode: string } };
@@ -59,6 +60,7 @@ export default function PanelArsip({
   const [pesan, setPesan] = useState('');
   const [loading, setLoading] = useState(false);
   const [previewBerkas, setPreviewBerkas] = useState<{ label: string; url: string } | null>(null);
+  const { beritahu } = useDialog();
   const halData = usePaginasi(data);
 
   // Modal ubah status siswa (berhenti / pindah / lulus / aktif kembali)
@@ -102,7 +104,10 @@ export default function PanelArsip({
   const konfirmasiTolak = async () => {
     if (!modalTolak) return;
     if (!alasanTolakBerkas.trim()) {
-      alert('Alasan penolakan berkas wajib diisi.');
+      await beritahu('Alasan penolakan berkas wajib diisi sebelum menyimpan.', {
+        judul: 'Alasan Belum Diisi',
+        tipe: 'warning',
+      });
       return;
     }
     await verifikasi(modalTolak.tipe, modalTolak.id, 'DITOLAK', alasanTolakBerkas.trim());

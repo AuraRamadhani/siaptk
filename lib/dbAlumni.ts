@@ -29,10 +29,8 @@ export async function inisialisasiDatabaseAlumni() {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
-    // 3. Izinkan status LULUS pada tabel anak di database operasional siaptk
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE siaptk.anak MODIFY COLUMN status ENUM('PENDAFTAR', 'AKTIF', 'LULUS') DEFAULT 'PENDAFTAR';
-    `).catch(() => {});
+    // Status anak diatur lewat migration, bukan di sini. Menulis ulang ENUM di sini
+    // akan menghapus nilai lain (BERHENTI, PINDAH) setiap kali alumni dipakai.
 
     initialized = true;
   } catch (err) {

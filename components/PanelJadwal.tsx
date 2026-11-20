@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useDialog } from '@/components/Dialog';
 
 type Slot = {
   idSlot: string;
@@ -39,6 +40,7 @@ const tgl = (s: string) =>
 const jam = (s: string) => (s.includes('T') ? s.slice(11, 16) : s.slice(0, 5));
 
 export default function PanelJadwal() {
+  const { konfirmasi, beritahu } = useDialog();
   const [slot, setSlot] = useState<Slot[]>([]);
   const [booking, setBooking] = useState<Booking[]>([]);
   const [pesan, setPesan] = useState('');
@@ -64,10 +66,13 @@ export default function PanelJadwal() {
     muat();
   }, []);
 
-  const toggleHari = (idHari: number) => {
+  const toggleHari = async (idHari: number) => {
     if (hariAktif.includes(idHari)) {
       if (hariAktif.length === 1) {
-        alert('Minimal harus memilih 1 hari kunjungan.');
+        await beritahu('Minimal harus memilih 1 hari kunjungan.', {
+          judul: 'Hari Kunjungan Kurang',
+          tipe: 'warning',
+        });
         return;
       }
       setHariAktif(hariAktif.filter((h) => h !== idHari));
@@ -155,7 +160,13 @@ export default function PanelJadwal() {
   };
 
   const hapusSlot = async (idSlot: string) => {
-    if (!confirm('Hapus slot kedatangan ini?')) return;
+    const lanjut = await konfirmasi({
+      judul: 'Hapus Slot Kedatangan',
+      pesan: 'Slot ini akan dihapus. Pemesanan yang sudah ada pada slot ini juga ikut terhapus.',
+      tipe: 'danger',
+      labelOk: 'Hapus',
+    });
+    if (!lanjut) return;
     const res = await fetch(`/api/slot-jadwal?idSlot=${idSlot}`, { method: 'DELETE' }).then((x) => x.json());
     setPesan(res.success ? res.message : res.error);
     muat();

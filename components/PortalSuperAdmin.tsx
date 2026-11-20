@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Paginasi, { usePaginasi } from '@/components/Paginasi';
+import { useDialog } from '@/components/Dialog';
 import {
   UserPlus,
   Users,
@@ -49,6 +50,7 @@ const WARNA_PERAN: Record<PeranStafKelola, string> = {
 
 export default function PortalSuperAdmin() {
   const { toast } = useToast();
+  const { konfirmasi } = useDialog();
   const [daftar, setDaftar] = useState<AkunStafItem[]>([]);
   const halDaftar = usePaginasi(daftar);
   const [ringkasan, setRingkasan] = useState<RingkasanPeran[]>([]);
@@ -182,7 +184,13 @@ export default function PortalSuperAdmin() {
   };
 
   const hapusAkun = async (akun: AkunStafItem) => {
-    if (!confirm(`Hapus akun ${akun.nama} (${LABEL_PERAN[akun.peran]})?`)) return;
+    const lanjut = await konfirmasi({
+      judul: 'Hapus Akun Staf',
+      pesan: `Akun ${akun.nama} (${LABEL_PERAN[akun.peran]}) akan dihapus dan tidak dapat masuk lagi.`,
+      tipe: 'danger',
+      labelOk: 'Hapus Akun',
+    });
+    if (!lanjut) return;
     try {
       const res = await fetch(`/api/staf?idAkun=${encodeURIComponent(akun.idAkun)}`, {
         method: 'DELETE',

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { CalendarPlus, ChevronRight, GraduationCap, RefreshCw } from 'lucide-react';
+import { useDialog } from '@/components/Dialog';
 
 type Kelompok = {
   idKelompok: string;
@@ -60,7 +61,12 @@ const LABEL_HASIL: Record<string, string> = {
   GAGAL: 'Tidak dapat diproses',
 };
 
+/** Siswa tanpa kelompok lama berarti baru masuk, bukan naik tingkat. */
+const labelHasil = (b: BarisRencana) =>
+  b.hasil === 'NAIK' && !b.kelompokLama ? 'Kelompok Baru' : LABEL_HASIL[b.hasil];
+
 export default function PanelKelompok() {
+  const { konfirmasi } = useDialog();
   const [data, setData] = useState<Hasil | null>(null);
   const [daftarTahun, setDaftarTahun] = useState<TahunAjaran[]>([]);
   const [pesan, setPesan] = useState('');
@@ -87,7 +93,13 @@ export default function PanelKelompok() {
 
   /** Buat tahun ajaran berikutnya dan langsung aktifkan. */
   const tambahTahun = async () => {
-    if (!window.confirm('Buat tahun ajaran berikutnya dan aktifkan sekarang?')) return;
+    const lanjut = await konfirmasi({
+      judul: 'Buat Tahun Ajaran Baru',
+      pesan: 'Sistem akan membuat tahun ajaran berikutnya dan langsung mengaktifkannya. Tahun ajaran lama tetap tersimpan beserta riwayat kelompoknya.',
+      tipe: 'info',
+      labelOk: 'Buat & Aktifkan',
+    });
+    if (!lanjut) return;
     setMemproses(true);
     const res = await fetch('/api/tahun-ajaran', {
       method: 'POST',
@@ -101,7 +113,13 @@ export default function PanelKelompok() {
   };
 
   const aktifkanTahun = async (t: TahunAjaran) => {
-    if (!window.confirm(`Aktifkan tahun ajaran ${t.periode}?`)) return;
+    const lanjut = await konfirmasi({
+      judul: 'Aktifkan Tahun Ajaran',
+      pesan: `Jadikan ${t.periode} sebagai tahun ajaran aktif? Tahun ajaran lain akan otomatis dinonaktifkan.`,
+      tipe: 'warning',
+      labelOk: 'Aktifkan',
+    });
+    if (!lanjut) return;
     setMemproses(true);
     const res = await fetch('/api/tahun-ajaran', {
       method: 'PATCH',
@@ -130,10 +148,16 @@ export default function PanelKelompok() {
   /** Terapkan hasil pratinjau. */
   const terapkan = async () => {
     if (!rencana) return;
-    const konfirmasi =
-      `Terapkan kenaikan kelompok tahun ${rencana.tahunAjaran}?\n\n` +
-      `${rencana.naik} naik kelompok · ${rencana.lulus} ditandai lulus · ${rencana.gagal} gagal`;
-    if (!window.confirm(konfirmasi)) return;
+    const lanjut = await konfirmasi({
+      judul: `Terapkan Kenaikan ${rencana.tahunAjaran}`,
+      pesan:
+        `${rencana.naik} siswa naik kelompok, ${rencana.lulus} ditandai lulus, ` +
+        `${rencana.tetap} tetap, ${rencana.gagal} tidak dapat diproses.\n\n` +
+        'Siswa yang ditandai lulus tidak lagi muncul di daftar siswa aktif.',
+      tipe: 'warning',
+      labelOk: 'Terapkan',
+    });
+    if (!lanjut) return;
 
     setMemproses(true);
     const res = await fetch('/api/pengelompokan?terapkan=1', { method: 'POST' }).then((x) => x.json());
@@ -144,7 +168,13 @@ export default function PanelKelompok() {
   };
 
   const keluarkan = async (idRiwayat: string, nama: string) => {
-    if (!window.confirm(`Keluarkan ${nama} dari kelompok?`)) return;
+    const lanjut = await konfirmasi({
+      judul: 'Keluarkan dari Kelompok',
+      pesan: `${nama} akan dikeluarkan dari kelompok pada tahun ajaran ini. Riwayat sebelumnya tetap tersimpan.`,
+      tipe: 'danger',
+      labelOk: 'Keluarkan',
+    });
+    if (!lanjut) return;
     const res = await fetch(`/api/pengelompokan?idRiwayat=${encodeURIComponent(idRiwayat)}`, {
       method: 'DELETE',
     }).then((x) => x.json());
@@ -268,7 +298,7 @@ export default function PanelKelompok() {
                       <td className="px-3 py-2 text-slate-500">{b.kelompokBaru ?? '—'}</td>
                       <td className="px-4 py-2">
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${WARNA_HASIL[b.hasil]}`}>
-                          {LABEL_HASIL[b.hasil]}
+                          {labelHasil(b)}
                         </span>
                         {b.alasan && <span className="block text-[10px] text-slate-400 mt-0.5">{b.alasan}</span>}
                       </td>

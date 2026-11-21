@@ -244,6 +244,21 @@ export async function POST(request: Request) {
 
       // 3. KATEGORI: PEMBAYARAN BIAYA PENDAFTARAN
       if (kategori === 'PENDAFTARAN') {
+        // Berkas persyaratan harus sudah sah, kecuali kepala sekolah mencatat
+        // pengecualian. Tanpa ini siswa bisa AKTIF tanpa berkas diperiksa.
+        const berkasDaftar = await tx.berkasAnak.findFirst({
+          where: { idAnak: anak.idAnak },
+          select: { statusVerifikasi: true },
+        });
+        const berkasSah = berkasDaftar?.statusVerifikasi === 'DIVERIFIKASI';
+        const adaPengecualian = Boolean(anak.pengecualianBerkas);
+        if (!berkasSah && !adaPengecualian) {
+          throw Object.assign(
+            new Error('Berkas persyaratan belum diverifikasi. Setujui berkas terlebih dahulu sebelum mencatat pelunasan.'),
+            { http: 409 }
+          );
+        }
+
         let tagihanTarget = await tx.tagihan.findFirst({
           where: {
             idAnak: anak.idAnak,
@@ -324,10 +339,12 @@ export async function POST(request: Request) {
       message: hasil.pesan,
     });
   } catch (error) {
-    console.error('API Transaksi Tunai POST Error:', error);
+    const status = (error as { http?: number }).http || 500;
+    if (status >= 500) console.error('API Transaksi Tunai POST Error:', error);
+    else console.warn('API Transaksi Tunai ditolak:', (error as Error).message);
     return NextResponse.json(
       { success: false, error: (error as Error).message || 'Terjadi kesalahan pada server.' },
-      { status: 500 }
+      { status }
     );
   }
 }

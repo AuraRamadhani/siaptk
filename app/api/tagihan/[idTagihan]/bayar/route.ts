@@ -123,14 +123,36 @@ export async function POST(
     // Alur pendaftaran: biaya pendaftaran baru boleh dibayar setelah kepala sekolah
     // menetapkan penerimaan (yang menandai deadlineBayar). Tanpa ini, orang tua bisa
     // membayar lebih dulu lalu tagihannya menggantung tanpa keputusan penerimaan.
-    if (tagihan.jenis === "PENDAFTARAN" && !PETUGAS.has(sesi.peran) && !tagihan.anak?.deadlineBayar) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Pendaftaran belum ditetapkan diterima oleh kepala sekolah. Silakan tunggu keputusan sebelum membayar.",
-        },
-        { status: 409 }
+    if (tagihan.jenis === "PENDAFTARAN" && !PETUGAS.has(sesi.peran)) {
+      // Harus sudah ditetapkan diterima.
+      if (!tagihan.anak?.deadlineBayar) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Pendaftaran belum ditetapkan diterima oleh kepala sekolah. Silakan tunggu keputusan sebelum membayar.",
+          },
+          { status: 409 }
+        );
+      }
+
+      // Berkas harus sudah sah, kecuali sekolah mencatat pengecualiannya.
+      const berkas = await prisma.berkasAnak.findFirst({
+        where: { idAnak: tagihan.idAnak },
+        select: { statusVerifikasi: true },
+      });
+      const berkasSah = berkas?.statusVerifikasi === "DIVERIFIKASI";
+      const adaPengecualian = Boolean(
+        (tagihan.anak as { pengecualianBerkas?: string | null }).pengecualianBerkas
       );
+      if (!berkasSah && !adaPengecualian) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Berkas persyaratan belum diverifikasi. Hubungi sekolah untuk menyelesaikan verifikasi berkas.",
+          },
+          { status: 409 }
+        );
+      }
     }
 
     let newStatus: string;

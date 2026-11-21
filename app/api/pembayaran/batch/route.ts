@@ -50,6 +50,27 @@ export async function POST(request: Request) {
           { status: 409 }
         );
       }
+
+      // Berkas juga harus sudah sah, kecuali sekolah mencatat pengecualiannya.
+      for (const t of tagihanList.filter((x) => x.jenis === 'PENDAFTARAN')) {
+        const berkas = await prisma.berkasAnak.findFirst({
+          where: { idAnak: t.idAnak },
+          select: { statusVerifikasi: true },
+        });
+        const berkasSah = berkas?.statusVerifikasi === 'DIVERIFIKASI';
+        const adaPengecualian = Boolean(
+          (t.anak as { pengecualianBerkas?: string | null } | null)?.pengecualianBerkas
+        );
+        if (!berkasSah && !adaPengecualian) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Berkas persyaratan belum diverifikasi. Hubungi sekolah untuk menyelesaikan verifikasi berkas.',
+            },
+            { status: 409 }
+          );
+        }
+      }
     }
 
     const results: unknown[] = [];

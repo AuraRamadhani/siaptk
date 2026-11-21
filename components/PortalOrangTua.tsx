@@ -463,6 +463,8 @@ export default function PortalOrangTua({
                             jalur: ch.jalurPendaftaran || "Daring",
                             deadlineBayar: ch.deadlineBayar ? new Date(ch.deadlineBayar).toLocaleDateString("id-ID") : null,
                             alasanPenolakan: ch.alasanPenolakan || null,
+                            pengecualianBerkas: ch.pengecualianBerkas || null,
+                            statusBerkasVerifikasi: berkasObj?.statusVerifikasi || null,
                             sppStatus: !pendaftaranLunasChild
                                 ? "Pendaftaran Belum Lunas"
                                 : tagihanSppChild.some((t: any) => t.status === "BELUM_BAYAR")
@@ -1564,19 +1566,25 @@ export default function PortalOrangTua({
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                        ) : !ch.deadlineBayar ? (
+                                                        ) : !ch.deadlineBayar || (ch.statusBerkasVerifikasi !== "DIVERIFIKASI" && !ch.pengecualianBerkas) ? (
                                                             // Belum ditetapkan diterima: belum ada tagihan yang boleh dibayar.
                                                             <div className="flex flex-col gap-1">
                                                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold text-[10px] w-fit">
                                                                     <Clock className="w-3 h-3 text-slate-500" />
-                                                                    <span>Menunggu Keputusan Penerimaan</span>
+                                                                    <span>
+                                                                        {!ch.deadlineBayar
+                                                                            ? "Menunggu Keputusan Penerimaan"
+                                                                            : "Berkas Belum Diverifikasi"}
+                                                                    </span>
                                                                 </span>
                                                                 <span className="text-[10px] text-slate-500">
-                                                                    {statusBerkas !== "DIVERIFIKASI"
-                                                                        ? berkasTerkirim
-                                                                            ? "Berkas sudah diunggah, menunggu diperiksa kepala sekolah"
-                                                                            : "Unggah Akta, Foto, dan KIA agar berkas dapat diperiksa"
-                                                                        : "Berkas sudah disetujui. Menunggu kepala sekolah menetapkan penerimaan"}
+                                                                    {!ch.deadlineBayar
+                                                                        ? statusBerkas !== "DIVERIFIKASI"
+                                                                            ? berkasTerkirim
+                                                                                ? "Berkas sudah diunggah, menunggu diperiksa kepala sekolah"
+                                                                                : "Unggah Akta, Foto, dan KIA agar berkas dapat diperiksa"
+                                                                            : "Berkas sudah disetujui. Menunggu kepala sekolah menetapkan penerimaan"
+                                                                        : "Berkas persyaratan belum diverifikasi. Hubungi sekolah agar pembayaran dapat dibuka"}
                                                                 </span>
                                                             </div>
                                                         ) : (
@@ -1812,6 +1820,10 @@ export default function PortalOrangTua({
                                                             ) : !detailChild.deadlineBayar ? (
                                                                 <span className="text-slate-500 font-medium text-[11px]">
                                                                     Menunggu keputusan penerimaan kepala sekolah
+                                                                </span>
+                                                            ) : detailChild.statusBerkasVerifikasi !== "DIVERIFIKASI" && !detailChild.pengecualianBerkas ? (
+                                                                <span className="text-amber-700 font-medium text-[11px]">
+                                                                    Berkas persyaratan belum diverifikasi. Hubungi sekolah agar pembayaran dapat dibuka.
                                                                 </span>
                                                             ) : (
                                                                 <button

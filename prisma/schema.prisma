@@ -105,6 +105,8 @@ model Anak {
   jalurPendaftaran String               @default("Daring") @map("jalur_pendaftaran")
   deadlineBayar    DateTime?            @map("deadline_bayar")
   alasanPenolakan  String?              @map("alasan_penolakan") @db.Text
+  /// Alasan sekolah menerima siswa walau berkas belum diverifikasi.
+  pengecualianBerkas String?            @map("pengecualian_berkas") @db.Text
   keluarga         Keluarga             @relation(fields: [idKeluarga], references: [idKeluarga], onDelete: Cascade)
   berkasAnak       BerkasAnak[]
   laporanMingguan  LaporanMingguan[]

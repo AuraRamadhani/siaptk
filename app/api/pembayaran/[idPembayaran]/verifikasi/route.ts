@@ -68,6 +68,31 @@ export async function PATCH(
     const nominal = Number(pembayaran.tagihan.nominal) - Number(pembayaran.tagihan.diskon);
 
     if (aksi === "verifikasi") {
+      // Pengaman terakhir: biaya pendaftaran tidak boleh dilunasi bila berkas belum
+      // sah dan sekolah tidak mencatat pengecualian. Tanpa ini, siswa bisa menjadi
+      // AKTIF padahal berkas persyaratannya tidak pernah diperiksa.
+      if (pembayaran.tagihan.jenis === 'PENDAFTARAN') {
+        const idAnak = pembayaran.tagihan.idAnak;
+        const berkas = await prisma.berkasAnak.findFirst({
+          where: { idAnak },
+          select: { statusVerifikasi: true },
+        });
+        const anak = await prisma.anak.findUnique({
+          where: { idAnak },
+          select: { pengecualianBerkas: true },
+        });
+        if (berkas?.statusVerifikasi !== 'DIVERIFIKASI' && !anak?.pengecualianBerkas) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                'Berkas persyaratan belum diverifikasi. Setujui berkas terlebih dahulu, atau kepala sekolah perlu mencatat pengecualian.',
+            },
+            { status: 409 }
+          );
+        }
+      }
+
       const [updatedPembayaran] = await prisma.$transaction(async (tx) => {
         const pb = await tx.pembayaran.update({
           where: { idPembayaran },

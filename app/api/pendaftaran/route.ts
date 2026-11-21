@@ -100,6 +100,8 @@ export async function PATCH(request: Request) {
         data: {
           deadlineBayar: deadline,
           alasanPenolakan: null,
+          // Jejak pengecualian berkas (kosong = penerimaan normal).
+          pengecualianBerkas: pengecualianBerkas?.trim() ? String(pengecualianBerkas).trim() : null,
         },
       });
 

@@ -156,12 +156,21 @@ await uji('TC-09 daftar pendaftar + penetapan penerimaan', async () => {
   }
 
   assert.equal(daftar.status, 200);
-  const idPendaftar = daftar.body.data[0]?.idAnak;
+  const pendaftar = daftar.body.data[0];
+  const idPendaftar = pendaftar?.idAnak;
   assert.ok(idPendaftar, 'tidak ada pendaftar');
+
+  // Penerimaan mensyaratkan berkas sudah diverifikasi. Bila belum ada berkas,
+  // pengecualian dipakai seperti kebijakan sekolah (tercatat pada notifikasi).
+  const berkas = Array.isArray(pendaftar.berkasAnak) ? pendaftar.berkasAnak[0] : pendaftar.berkasAnak;
+  const opsiTerima = { idAnak: idPendaftar, aksi: 'terima' };
+  if (berkas?.statusVerifikasi !== 'DIVERIFIKASI') {
+    opsiTerima.pengecualianBerkas = 'Berkas menyusul (uji fungsional)';
+  }
 
   // Penetapan penerimaan hanya menetapkan deadline bayar; status tetap PENDAFTAR
   // sampai biaya pendaftaran diverifikasi LUNAS oleh bendahara (lihat app/api/pendaftaran).
-  const terima = await kirim('/api/pendaftaran', 'PATCH', { idAnak: idPendaftar, aksi: 'terima' });
+  const terima = await kirim('/api/pendaftaran', 'PATCH', opsiTerima);
   assert.equal(terima.status, 200, 'penetapan penerimaan gagal');
   assert.ok(terima.body.data?.deadlineBayar, 'deadline pembayaran tidak ditetapkan');
   assert.equal(terima.body.data?.status, 'PENDAFTAR', 'status berubah sebelum pembayaran lunas');
